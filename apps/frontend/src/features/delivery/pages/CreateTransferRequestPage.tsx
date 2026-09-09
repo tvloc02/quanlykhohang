@@ -24,6 +24,7 @@ import {
   Car,
   Calendar,
   Bike,
+  Lock,
 } from 'lucide-react';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
 import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
@@ -585,11 +586,52 @@ export default function CreateTransferRequestPage({
   };
 
   // Filtered Products for row autocomplete
-  const getFilteredProductsForRow = (rowText: string) => {
-    const kw = (rowText || '').trim().toLowerCase();
-    if (!kw) return products;
-    return products.filter(
-      (p) => p.name.toLowerCase().includes(kw) || (p.internalSku || '').toLowerCase().includes(kw)
+  const getFilteredProductsForRow = (rowText: string, currentRowId?: string) => {
+    const currentRow = (activeTab?.details || []).find((r) => r.rowId === currentRowId);
+    const isSelectedProductText = currentRow?.productId && (
+      rowText === `${currentRow.productSku ? currentRow.productSku + ' - ' : ''}${currentRow.productName}` ||
+      rowText === currentRow.productName ||
+      rowText === currentRow.productSku
+    );
+
+    const kw = isSelectedProductText ? '' : (rowText || '').trim().toLowerCase();
+
+    // Collect products selected in OTHER rows
+    const otherSelectedIds = new Set<string>();
+    const otherSelectedSkus = new Set<string>();
+    const otherSelectedNames = new Set<string>();
+
+    (activeTab?.details || []).forEach((r) => {
+      if (currentRowId && r.rowId === currentRowId) return;
+      if (r.productId && String(r.productId).trim()) {
+        otherSelectedIds.add(String(r.productId).trim().toLowerCase());
+      }
+      if (r.productSku && String(r.productSku).trim()) {
+        otherSelectedSkus.add(String(r.productSku).trim().toLowerCase());
+      }
+      if (r.productName && String(r.productName).trim()) {
+        otherSelectedNames.add(String(r.productName).trim().toLowerCase());
+      }
+    });
+
+    const unselectedProducts = products.filter((p) => {
+      const pId = String(p.id || '').trim().toLowerCase();
+      const pSku = String(p.internalSku || '').trim().toLowerCase();
+      const pName = String(p.name || '').trim().toLowerCase();
+
+      if (pId && otherSelectedIds.has(pId)) return false;
+      if (pSku && otherSelectedSkus.has(pSku)) return false;
+      if (pName && otherSelectedNames.has(pName)) return false;
+      return true;
+    });
+
+    if (!kw) return unselectedProducts;
+
+    return unselectedProducts.filter(
+      (p) =>
+        p.name.toLowerCase().includes(kw) ||
+        (p.internalSku || '').toLowerCase().includes(kw) ||
+        `${p.internalSku} ${p.name}`.toLowerCase().includes(kw)
     );
   };
 
@@ -597,6 +639,18 @@ export default function CreateTransferRequestPage({
   const activeValidItems = useMemo(() => {
     if (!activeTab) return [];
     return activeTab.details.filter((d) => (d.productName || d.productSku || d.productId) && d.qty > 0);
+  }, [activeTab]);
+
+  // Kiểm tra xem đã có bất kỳ hàng hóa nào trong phiếu được chọn ô kệ hay chưa
+  const hasAssignedBins = useMemo(() => {
+    if (!activeTab) return false;
+    return (activeTab.details || []).some((r: any) => {
+      const hasProduct = Boolean(r.productId || r.productName?.trim() || r.productSku?.trim());
+      if (!hasProduct) return false;
+      const hasArray = Array.isArray(r.assignedBins) && r.assignedBins.length > 0;
+      const hasStr = Boolean(r.locationBin && r.locationBin.trim() && r.locationBin.trim() !== '-');
+      return hasArray || hasStr;
+    });
   }, [activeTab]);
 
   const totalQty = useMemo(() => {
@@ -638,8 +692,26 @@ export default function CreateTransferRequestPage({
   const handleSaveTransferRequest = async (statusSave: 'DRAFT' | 'PENDING' | 'APPROVED') => {
     if (!activeTab) return;
 
-    if (activeValidItems.length === 0) {
-      setToast({ type: 'error', message: 'Vui lòng chọn ít nhất 1 sản phẩm với số lượng > 0' });
+    const itemsWithProduct = (activeTab.details || []).filter(
+      (d) => d.productId || d.productName?.trim() || d.productSku?.trim()
+    );
+
+    if (itemsWithProduct.length === 0) {
+      setToast({
+        type: 'error',
+        message: 'Phiếu yêu cầu điều chuyển phải có ít nhất 1 hàng hóa! Vui lòng chọn hàng hóa trước khi tạo phiếu.',
+      });
+      return;
+    }
+
+    const invalidQtyItem = itemsWithProduct.find(
+      (d) => !d.qty || Number(d.qty) < 1 || isNaN(Number(d.qty))
+    );
+    if (invalidQtyItem) {
+      setToast({
+        type: 'error',
+        message: `Mặt hàng "${invalidQtyItem.productName || invalidQtyItem.productSku || 'trong phiếu'}" có số lượng không hợp lệ. Số lượng phải lớn hơn hoặc bằng 1!`,
+      });
       return;
     }
 
@@ -748,19 +820,19 @@ export default function CreateTransferRequestPage({
 
       {/* ═══ 1. TOP HEADER BAR: Page Title & Back Button (Hidden in Fullscreen) ═══ */}
       {!isFullscreen && (
-        <div className="flex items-center justify-between">
-          <div className="inline-flex items-center gap-2.5 rounded-xl bg-cyan-600 px-4 py-2 text-white shadow-sm">
-            <Repeat className="h-5 w-5 text-cyan-100" />
-            <h1 className="text-base font-black tracking-tight uppercase">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div className="inline-flex items-center gap-2.5 rounded-xl bg-cyan-600 px-3.5 sm:px-4 py-2 text-white shadow-sm">
+            <Repeat className="h-4 w-4 sm:h-5 sm:w-5 text-cyan-100 shrink-0" />
+            <h1 className="text-xs sm:text-base font-black tracking-tight uppercase line-clamp-1 sm:line-clamp-none">
               {activeTab?.id ? 'CHỈNH SỬA PHIẾU NHẬP CHUYỂN KHO NỘI BỘ' : 'TẠO PHIẾU NHẬP CHUYỂN KHO NỘI BỘ (LẬP YÊU CẦU / PHIẾU NHẬP)'}
             </h1>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 self-end sm:self-auto">
             <button
               type="button"
               onClick={handleClearCurrentTab}
-              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-amber-500 bg-white px-3.5 py-2 text-xs font-bold text-amber-700 hover:bg-amber-50 transition shadow-xs cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-amber-500 bg-white px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs font-bold text-amber-700 hover:bg-amber-50 transition shadow-xs cursor-pointer"
               title="Làm mới form và xóa các dòng đã chọn"
             >
               <RotateCcw className="h-4 w-4 text-amber-600" />
@@ -769,7 +841,7 @@ export default function CreateTransferRequestPage({
             <button
               type="button"
               onClick={handleBackNavigation}
-              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition shadow-xs cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-500 bg-white px-3 sm:px-4 py-1.5 sm:py-2 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition shadow-xs cursor-pointer"
             >
               <ArrowLeft size={16} />
               <span>Quay lại</span>
@@ -860,14 +932,28 @@ export default function CreateTransferRequestPage({
 
               {/* Kho xuất hàng (Kho nguồn nội bộ) */}
               <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
-                  <WarehouseIcon className="h-3.5 w-3.5 text-cyan-600" />
-                  <span>Kho xuất (Kho nguồn)</span>
-                </label>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
+                    <WarehouseIcon className="h-3.5 w-3.5 text-cyan-600" />
+                    <span>Kho xuất (Kho nguồn)</span>
+                  </label>
+                </div>
                 <select
+                  disabled={hasAssignedBins}
                   value={activeTab?.sourceWarehouseCode || 'KHO-TONG'}
-                  onChange={(e) => handleSourceWarehouseChange(e.target.value)}
-                  className="h-9 w-full rounded-lg border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none focus:border-cyan-600 cursor-pointer"
+                  onChange={(e) => {
+                    if (hasAssignedBins) {
+                      setToast({ message: 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho!', type: 'error' });
+                      return;
+                    }
+                    handleSourceWarehouseChange(e.target.value);
+                  }}
+                  className={`h-9 w-full rounded-lg border-2 px-3 text-xs font-bold transition ${
+                    hasAssignedBins
+                      ? 'bg-slate-100 border-slate-300 text-slate-600 cursor-not-allowed'
+                      : 'bg-cyan-50/50 border-cyan-500 text-cyan-900 outline-none focus:border-cyan-600 cursor-pointer'
+                  }`}
+                  title={hasAssignedBins ? 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho.' : undefined}
                 >
                   {warehouses.filter((wh) => !wh.isFrozen).length > 0 ? (
                     warehouses
@@ -889,14 +975,28 @@ export default function CreateTransferRequestPage({
 
               {/* Kho nhập hàng (Kho đích) */}
               <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
-                  <ArrowRight className="h-3.5 w-3.5 text-cyan-600" />
-                  <span>Kho nhập (Kho đích)</span>
-                </label>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
+                    <ArrowRight className="h-3.5 w-3.5 text-cyan-600" />
+                    <span>Kho nhập (Kho đích)</span>
+                  </label>
+                </div>
                 <select
+                  disabled={hasAssignedBins}
                   value={activeTab?.destinationWarehouseCode || 'KHO-CN-HCM'}
-                  onChange={(e) => handleDestinationWarehouseChange(e.target.value)}
-                  className="h-9 w-full rounded-lg border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none focus:border-cyan-600 cursor-pointer"
+                  onChange={(e) => {
+                    if (hasAssignedBins) {
+                      setToast({ message: 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho!', type: 'error' });
+                      return;
+                    }
+                    handleDestinationWarehouseChange(e.target.value);
+                  }}
+                  className={`h-9 w-full rounded-lg border-2 px-3 text-xs font-bold transition ${
+                    hasAssignedBins
+                      ? 'bg-slate-100 border-slate-300 text-slate-600 cursor-not-allowed'
+                      : 'bg-cyan-50/50 border-cyan-500 text-cyan-900 outline-none focus:border-cyan-600 cursor-pointer'
+                  }`}
+                  title={hasAssignedBins ? 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho.' : undefined}
                 >
                   {warehouses.filter((wh) => !wh.isFrozen).length > 0 ? (
                     warehouses
@@ -1058,19 +1158,19 @@ export default function CreateTransferRequestPage({
           {/* ═══ PRODUCT SELECTION TABLE CARD ═══ */}
           <div className={`flex flex-col rounded-xl border-2 border-slate-200 bg-white shadow-sm overflow-hidden min-h-0 ${isFullscreen ? 'flex-1 h-full' : ''}`}>
             {/* Table Header Controls */}
-            <div className="px-3 py-2 border-b-2 border-slate-200 bg-slate-50 flex items-center justify-between flex-shrink-0">
+            <div className="px-3 py-2 border-b-2 border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2 flex-shrink-0">
               <div className="flex items-center gap-2 text-cyan-800 font-extrabold text-xs">
-                <Package className="h-4 w-4 text-cyan-600" />
+                <Package className="h-4 w-4 text-cyan-600 shrink-0" />
                 <span>
                   THÔNG TIN HÀNG HÓA NHẬP CHUYỂN ({activeValidItems.length} MẶT HÀNG - TỔNG SL: {totalQty})
                 </span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                 <button
                   type="button"
                   onClick={() => setShowScannerModal(true)}
-                  className="inline-flex items-center gap-1 rounded-lg border-2 border-cyan-600 bg-white px-3 py-1 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition cursor-pointer"
+                  className="inline-flex items-center gap-1 rounded-lg border-2 border-cyan-600 bg-white px-2.5 sm:px-3 py-1 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition cursor-pointer"
                 >
                   <ScanLine className="h-3.5 w-3.5 text-cyan-600" />
                   <span>Quét Barcode</span>
@@ -1079,7 +1179,7 @@ export default function CreateTransferRequestPage({
                 <button
                   type="button"
                   onClick={handleAddBlankRow}
-                  className="inline-flex items-center gap-1 rounded-lg bg-cyan-600 px-3.5 py-1 text-xs font-extrabold text-white shadow-sm hover:bg-cyan-700 transition cursor-pointer"
+                  className="inline-flex items-center gap-1 rounded-lg bg-cyan-600 px-3 sm:px-3.5 py-1 text-xs font-extrabold text-white shadow-sm hover:bg-cyan-700 transition cursor-pointer"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   <span>Thêm dòng mới</span>
@@ -1088,7 +1188,7 @@ export default function CreateTransferRequestPage({
                 <button
                   type="button"
                   onClick={() => setIsFullscreen(!isFullscreen)}
-                  className="inline-flex items-center gap-1 rounded-lg border-2 border-cyan-500 bg-cyan-50 px-2.5 py-1 text-xs font-bold text-cyan-800 hover:bg-cyan-100 transition cursor-pointer shadow-xs"
+                  className="inline-flex items-center gap-1 rounded-lg border-2 border-cyan-500 bg-cyan-50 px-2 sm:px-2.5 py-1 text-xs font-bold text-cyan-800 hover:bg-cyan-100 transition cursor-pointer shadow-xs"
                   title={isFullscreen ? 'Thu nhỏ cửa sổ' : 'Phóng to toàn màn hình'}
                 >
                   {isFullscreen ? <Minimize2 className="h-3.5 w-3.5 text-cyan-700" /> : <Maximize2 className="h-3.5 w-3.5 text-cyan-700" />}
@@ -1145,7 +1245,11 @@ export default function CreateTransferRequestPage({
                             value={row.productName ? `${row.productSku ? row.productSku + ' - ' : ''}${row.productName}` : ''}
                             onChange={(e) => {
                               const val = e.target.value;
-                              updateRow(row.rowId, { productName: val });
+                              const isExact = row.productId && (val === `${row.productSku ? row.productSku + ' - ' : ''}${row.productName}` || val === row.productName);
+                              updateRow(row.rowId, {
+                                productName: val,
+                                ...(isExact ? {} : { productId: '', productSku: '' }),
+                              });
                               setActiveProductDropdownRowId(row.rowId);
                             }}
                             onFocus={() => setActiveProductDropdownRowId(row.rowId)}
@@ -1156,17 +1260,17 @@ export default function CreateTransferRequestPage({
 
                           {/* Interactive Table Dropdown for this row */}
                           {activeProductDropdownRowId === row.rowId && (
-                            <div className="absolute left-0 top-full z-[100] mt-1 w-[420px] max-h-60 overflow-y-auto rounded-xl border border-slate-300 bg-white shadow-2xl flex flex-col">
+                            <div className="absolute left-0 top-full z-[100] mt-1 w-[90vw] max-w-[420px] sm:w-[420px] max-h-60 overflow-y-auto rounded-xl border border-slate-300 bg-white shadow-2xl flex flex-col">
                               <div className="flex bg-slate-100 border-b border-slate-300 px-3 py-2 text-[11px] font-bold text-slate-600 sticky top-0 z-10">
                                 <span className="w-1/3 uppercase">Mã SKU</span>
                                 <span className="w-1/3 uppercase">Tên Hàng Hóa</span>
                                 <span className="w-1/3 text-right uppercase">SL Tồn Kho Xuất</span>
                               </div>
                               <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
-                                {getFilteredProductsForRow(row.productName).length === 0 ? (
+                                {getFilteredProductsForRow(row.productName || row.productSku, row.rowId).length === 0 ? (
                                   <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy sản phẩm phù hợp</div>
                                 ) : (
-                                  getFilteredProductsForRow(row.productName).map((p) => {
+                                  getFilteredProductsForRow(row.productName || row.productSku, row.rowId).map((p) => {
                                     const stockInSource = getProductWarehouseStock(p, activeTab?.sourceWarehouseCode);
                                     return (
                                       <div

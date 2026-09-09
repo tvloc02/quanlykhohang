@@ -51,6 +51,7 @@ import {
   FileSpreadsheet,
 } from 'lucide-react';
 import { WarehouseSlottingGrid, fetchWarehouseOccupiedBins } from '../components/WarehouseSlottingGrid';
+import WarehouseGoodsPrintModal from '../components/WarehouseGoodsPrintModal';
 import Toast from '../../../shared/components/Toast';
 import MainLayout from '../../../shared/components/MainLayout';
 import {
@@ -169,6 +170,7 @@ export default function CreateWarehousePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
   // Bin Edit Inspector Modal State
   const [editingBinCode, setEditingBinCode] = useState<string | null>(null);
@@ -706,10 +708,10 @@ export default function CreateWarehousePage() {
       rackLength: defaultRL,
       rackWidth: defaultRW,
       rackHeight: defaultRH,
-      racksCount: 3,
+      racksCount: 1,
       shelvesPerRack: 5,
       binsPerShelf: 2,
-      racks: generateDefaultRacks(3, 20, 6, 6, 5, 2, defaultRL, defaultRW, defaultRH),
+      racks: generateDefaultRacks(1, 20, 6, 2, 5, 2, defaultRL, defaultRW, defaultRH),
     };
     setSubWarehouses([initialZone]);
     setActiveZoneId(initialZone.id);
@@ -860,7 +862,7 @@ export default function CreateWarehousePage() {
         const nextRackWidth = fields.rackWidth !== undefined ? fields.rackWidth : (z.rackWidth ?? z.racks?.[0]?.width ?? defaultRW);
         const nextRackHeight = fields.rackHeight !== undefined ? fields.rackHeight : (z.rackHeight ?? z.racks?.[0]?.height ?? defaultRH);
 
-        const nextRacksCount = fields.racksCount !== undefined ? fields.racksCount : (z.racksCount ?? 4);
+        const nextRacksCount = fields.racksCount !== undefined ? fields.racksCount : (z.racksCount ?? 1);
         const nextShelves = fields.shelvesPerRack !== undefined ? fields.shelvesPerRack : (z.shelvesPerRack ?? 5);
         const nextBinsPerShelf = fields.binsPerShelf !== undefined ? fields.binsPerShelf : (z.binsPerShelf ?? 2);
         const nextMaxWeight = fields.maxWeightPerBin !== undefined ? fields.maxWeightPerBin : (z.maxWeightPerBin ?? 500);
@@ -1018,10 +1020,10 @@ export default function CreateWarehousePage() {
       rackLength: defaultRL,
       rackWidth: defaultRW,
       rackHeight: defaultRH,
-      racksCount: 3,
+      racksCount: 1,
       shelvesPerRack: 5,
       binsPerShelf: 2,
-      racks: generateDefaultRacks(3, 20, 6, 6, 5, 2, defaultRL, defaultRW, defaultRH),
+      racks: generateDefaultRacks(1, 20, 6, 2, 5, 2, defaultRL, defaultRW, defaultRH),
     };
     setSubWarehouses([...subWarehouses, newZone]);
     setActiveZoneId(newZone.id);
@@ -1113,34 +1115,7 @@ export default function CreateWarehousePage() {
               className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer disabled:opacity-50"
             >
               <Save className="h-4.5 w-4.5 text-cyan-700" />
-              {isEditMode ? 'Lưu thay đổi' : 'Lưu kho hàng'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                if (isEditMode) {
-                  navigate('/warehouses/create');
-                } else {
-                  resetCreateForm();
-                  setSuccess('Đã làm mới biểu mẫu tạo kho hàng!');
-                }
-              }}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-              title="Tạo mới kho hàng sạch hoàn toàn"
-            >
-              <Plus className="h-4.5 w-4.5 text-cyan-700" />
-              Thêm mới
-            </button>
-
-            <button
-              type="button"
-              onClick={handleCopyWarehouseConfig}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-              title="Sao chép cấu hình kho"
-            >
-              <Copy className="h-4.5 w-4.5 text-cyan-700" />
-              Copy
+              Lưu
             </button>
 
             <button
@@ -1155,8 +1130,9 @@ export default function CreateWarehousePage() {
 
             <button
               type="button"
-              onClick={() => window.print()}
+              onClick={() => setIsPrintModalOpen(true)}
               className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+              title="In báo cáo chi tiết vị trí hàng hóa trên các kệ kho"
             >
               <Printer className="h-4.5 w-4.5 text-cyan-700" />
               In báo cáo
@@ -1179,6 +1155,16 @@ export default function CreateWarehousePage() {
             >
               <Settings className="h-4.5 w-4.5 text-cyan-700" />
               <span>Hiển thị</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate('/warehouses')}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+              title="Quay lại danh sách kho hàng"
+            >
+              <ArrowLeft className="h-4.5 w-4.5 text-cyan-700" />
+              <span>Quay lại</span>
             </button>
 
             <button
@@ -1816,7 +1802,7 @@ export default function CreateWarehousePage() {
                       mode="view"
                       onBinClick={(fullBinCode, customConfig, occupiedInfo, goodsList) => {
                         setEditingBinCode(fullBinCode);
-                        const rawList = goodsList && goodsList.length > 0 ? goodsList : (occupiedInfo ? [occupiedInfo] : []);
+                        const rawList = isEditMode ? (goodsList && goodsList.length > 0 ? goodsList : (occupiedInfo ? [occupiedInfo] : [])) : [];
                         const normalizedList = rawList.map((item: any) => ({
                           ...item,
                           quantity: Number(item.quantity || item.totalPhysical || item.qty || 1),
@@ -1824,8 +1810,8 @@ export default function CreateWarehousePage() {
 
                         setActiveBinGoodsDetails({
                           fullBinCode,
-                          customConfig,
-                          occupiedInfo,
+                          customConfig: isEditMode ? customConfig : null,
+                          occupiedInfo: isEditMode ? occupiedInfo : null,
                           goodsList: normalizedList,
                         });
                         const binShort = fullBinCode.split('-').pop() || fullBinCode;
@@ -1862,10 +1848,12 @@ export default function CreateWarehousePage() {
           .reduce((s: number, t: any) => s + Math.abs(Number(t.quantity || 0)), 0);
         const netQty = Math.max(0, totalIn - totalOut);
         const netOccupancy = occupiedInfo?.occupancyPct !== undefined ? Number(occupiedInfo.occupancyPct) : (netQty > 0 ? 100 : 0);
-        const hasGoods = (occupiedInfo && (occupiedInfo.totalPhysical > 0 || occupiedInfo.allocated > 0)) || netQty > 0 || netOccupancy > 0;
-        const customConfig = activeBinGoodsDetails?.customConfig || (activeZone?.racks || [])
-          .flatMap((rk: any) => Object.values(rk.customBins || {}))
-          .find((cb: any) => cb.binCode === binShort || cb.binCode === editingBinCode);
+        const hasGoods = isEditMode && Boolean((occupiedInfo && ((occupiedInfo.totalPhysical || 0) > 0 || (occupiedInfo.allocated || 0) > 0)) || netQty > 0 || netOccupancy > 0);
+        const customConfig = isEditMode
+          ? (activeBinGoodsDetails?.customConfig || (activeZone?.racks || [])
+              .flatMap((rk: any) => Object.values(rk.customBins || {}))
+              .find((cb: any) => cb.binCode === binShort || cb.binCode === editingBinCode))
+          : null;
 
         return (
           <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-3 sm:p-5 animate-fadeIn">
@@ -2257,6 +2245,19 @@ export default function CreateWarehousePage() {
           </div>
         );
       })()}
+
+      {isPrintModalOpen && (
+        <WarehouseGoodsPrintModal
+          isOpen={isPrintModalOpen}
+          onClose={() => setIsPrintModalOpen(false)}
+          warehouseCode={code}
+          warehouseName={name}
+          warehouseAddress={`${detailAddress ? detailAddress + ', ' : ''}${ward}, ${province}`}
+          subWarehouses={subWarehouses}
+          activeZoneId={activeZoneId}
+          activeRackId={activeRackId}
+        />
+      )}
     </MainLayout>
   );
 }

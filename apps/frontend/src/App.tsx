@@ -173,9 +173,6 @@ function RoleRoute({ children, allowedRoles, menuId }: { children: React.ReactNo
     );
   }
 
-  if (isAdmin) {
-    return <>{children}</>;
-  }
   if (menuId) {
     if (canViewMenu(menuId)) {
       return <>{children}</>;
@@ -186,6 +183,7 @@ function RoleRoute({ children, allowedRoles, menuId }: { children: React.ReactNo
       </MainLayout>
     );
   }
+
   if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(user.role || '')) {
     return (
       <MainLayout>
@@ -622,6 +620,60 @@ function App() {
           element={
             <ProtectedRoute>
               <CreateOutboundOrderPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/outbound/disposal"
+          element={
+            <RoleRoute menuId="outbound-disposal">
+              <MainLayout>
+                <Outbound featureMode="disposal" title="DANH SÁCH PHIẾU XUẤT HỦY HÀNG HÓA" codePrefix="XH" partnerLabel="Lý do xuất hủy" />
+              </MainLayout>
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/outbound/disposal/create"
+          element={
+            <ProtectedRoute>
+              <CreateOutboundOrderPage featureMode="disposal" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/outbound/retail"
+          element={
+            <RoleRoute menuId="outbound-retail">
+              <MainLayout>
+                <Outbound featureMode="retail" title="DANH SÁCH PHIẾU XUẤT BÁN LẺ" codePrefix="XBL" partnerLabel="Khách hàng bán lẻ" />
+              </MainLayout>
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/outbound/retail/create"
+          element={
+            <ProtectedRoute>
+              <CreateOutboundOrderPage featureMode="retail" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/outbound/sales-orders"
+          element={
+            <RoleRoute menuId="outbound-sales-orders">
+              <MainLayout>
+                <Outbound featureMode="sales-order" title="DANH SÁCH ĐƠN ĐẶT HÀNG (SALES ORDERS)" codePrefix="DDH" />
+              </MainLayout>
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/outbound/sales-orders/create"
+          element={
+            <ProtectedRoute>
+              <CreateOutboundOrderPage featureMode="sales-order" />
             </ProtectedRoute>
           }
         />

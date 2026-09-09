@@ -17,12 +17,10 @@ import { ReportPrintFooter } from '../components/ReportPrintFooter';
 
 const fmt = (v: number) => new Intl.NumberFormat('vi-VN').format(Math.round(v || 0));
 
+import { getInitialReportDates } from '../../../shared/utils/dateUtils';
+
 function getInitialDates() {
-  const now = new Date();
-  const past30 = new Date(now);
-  past30.setDate(past30.getDate() - 30);
-  const formatD = (d: Date) => d.toISOString().split('T')[0];
-  return { firstDay: formatD(past30), today: formatD(now) };
+  return getInitialReportDates(30);
 }
 
 interface InventoryItem {

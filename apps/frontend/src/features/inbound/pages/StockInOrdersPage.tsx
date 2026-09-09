@@ -441,7 +441,7 @@ export default function StockInOrdersPage() {
 
   React.useEffect(() => {
     if (!toast) return;
-    const timer = window.setTimeout(() => setToast(null), 3500);
+    const timer = window.setTimeout(() => setToast(null), 3000);
     return () => window.clearTimeout(timer);
   }, [toast]);
 
@@ -988,10 +988,10 @@ export default function StockInOrdersPage() {
   return (
     <div className="space-y-6">
       {toast && (
-        <div className={`fixed right-6 top-24 z-[9999] flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-xl ${toast.type === 'error' ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-600'}`}>
-          {toast.type === 'error' ? <XCircle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
+        <div className={`fixed right-6 top-24 z-[9999] flex items-center gap-3 rounded-xl border px-4 py-3 shadow-lg ${toast.type === 'error' ? 'bg-red-50 border-red-200 text-red-600' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
+          {toast.type === 'error' ? <XCircle className="h-5 w-5 shrink-0 text-red-600" /> : <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />}
           <p className="text-sm font-bold">{toast.message}</p>
-          <button type="button" onClick={() => setToast(null)} className="rounded-lg p-1 hover:bg-slate-100">
+          <button type="button" onClick={() => setToast(null)} className="rounded-lg p-1 hover:bg-black/5 transition cursor-pointer">
             <X className="h-4 w-4" />
           </button>
         </div>

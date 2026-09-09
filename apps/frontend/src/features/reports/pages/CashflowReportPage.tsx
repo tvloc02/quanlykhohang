@@ -15,14 +15,12 @@ import { reportsApi } from '../api/reportsApi';
 import { ReportPrintHeader } from '../components/ReportPrintHeader';
 import { ReportPrintFooter } from '../components/ReportPrintFooter';
 
+import { getLocalDateString, getInitialReportDates } from '../../../shared/utils/dateUtils';
+
 const fmt = (v: number) => new Intl.NumberFormat('vi-VN').format(Math.round(v || 0));
 
 function getInitialDates() {
-  const now = new Date();
-  const past30 = new Date(now);
-  past30.setDate(past30.getDate() - 30);
-  const formatD = (d: Date) => d.toISOString().split('T')[0];
-  return { firstDay: formatD(past30), today: formatD(now) };
+  return getInitialReportDates(30);
 }
 
 interface CashflowItem {
@@ -91,6 +89,16 @@ export default function CashflowReportPage() {
 
   useEffect(() => {
     loadData();
+  }, [startDate, endDate]);
+
+  useEffect(() => {
+    const handleOrderEvent = () => loadData();
+    window.addEventListener('outbound-order-created', handleOrderEvent);
+    window.addEventListener('storage', handleOrderEvent);
+    return () => {
+      window.removeEventListener('outbound-order-created', handleOrderEvent);
+      window.removeEventListener('storage', handleOrderEvent);
+    };
   }, [startDate, endDate]);
 
   // Filter dataset by search term

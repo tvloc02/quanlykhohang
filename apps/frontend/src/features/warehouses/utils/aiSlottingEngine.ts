@@ -41,9 +41,9 @@ export function generateWarehouseBinCells(warehouse: WarehouseRecord): BinCellIn
   const subWarehouses = warehouse.subWarehouses || [];
   subWarehouses.forEach((zone) => {
     const zoneType = zone.zoneType || 'AMBIENT';
-    const racksCount = zone.racksCount || 4;
-    const defaultShelves = zone.shelvesPerRack || 4;
-    const defaultBinsPerShelf = zone.binsPerShelf || 4;
+    const racksCount = zone.racksCount || 1;
+    const defaultShelves = zone.shelvesPerRack ? Math.max(1, zone.shelvesPerRack - 1) : 4;
+    const defaultBinsPerShelf = zone.binsPerShelf || 2;
     const defaultMaxWeight = zone.maxWeightPerBin || 500;
     const defaultCellL = zone.cellLength || 120;
     const defaultCellW = zone.cellWidth || 80;
@@ -56,7 +56,7 @@ export function generateWarehouseBinCells(warehouse: WarehouseRecord): BinCellIn
       const rackObj = racksList?.find((rk) => rk.rackCode === rackCode || rk.id === `rack-${r}`);
 
       const shelvesCount = rackObj?.shelvesCount || defaultShelves;
-      const baysCount = Math.max(1, (rackObj?.verticalPartitions || defaultBinsPerShelf) - 1);
+      const baysCount = rackObj?.baysCount || Math.max(1, (rackObj?.verticalPartitions || defaultBinsPerShelf) - 1);
 
       for (let s = 1; s <= shelvesCount; s++) {
         const globalShelfIndex = calculateGlobalShelfIndex(subWarehouses, zone.id, rackObj?.id || `rack-${r}`, s);

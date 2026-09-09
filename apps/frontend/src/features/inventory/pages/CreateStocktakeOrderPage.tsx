@@ -472,6 +472,12 @@ export default function CreateStocktakeOrderPage({
   const showSuccess = (msg: string) => setToast({ message: msg, type: 'success' });
   const showError = (msg: string) => setToast({ message: msg, type: 'error' });
 
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
   // Load Master Data
   const loadMasterData = useCallback(async () => {
     try {
@@ -957,30 +963,26 @@ export default function CreateStocktakeOrderPage({
 
   const contentMarkup = (
     <div className="space-y-4 pb-24 animate-[fadeIn_0.2s_ease-out]">
-      {/* Toast Alert: Nền trắng sạch sẽ, cố định dưới navbar ở top-20 right-6, tuyệt đối không làm biến dạng hay đẩy trang */}
+      {/* Toast Alert */}
       {toast && (
         <div className="fixed top-20 right-6 z-[99999] pointer-events-none transition-all duration-300">
           <div
-            className={`pointer-events-auto flex items-center gap-3 rounded-2xl bg-white px-5 py-3.5 shadow-2xl border-2 transition-all animate-in slide-in-from-top-4 duration-300 ${
+            className={`pointer-events-auto flex items-center gap-3 rounded-2xl px-5 py-3.5 shadow-lg border transition-all animate-in slide-in-from-top-4 duration-200 ${
               toast.type === 'error'
-                ? 'border-red-200 text-slate-800 shadow-red-500/10'
-                : 'border-slate-200 text-slate-800 shadow-slate-900/10'
+                ? 'bg-red-50 text-red-600 border-red-200'
+                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
             }`}
           >
             {toast.type === 'error' ? (
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-red-100 text-red-600 shrink-0">
-                <XCircle size={20} />
-              </div>
+              <XCircle size={20} className="shrink-0 text-red-600" />
             ) : (
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 shrink-0">
-                <CheckCircle2 size={20} />
-              </div>
+              <CheckCircle2 size={20} className="shrink-0 text-emerald-600" />
             )}
-            <p className="text-xs sm:text-sm font-bold text-slate-800 tracking-normal">{toast.message}</p>
+            <p className="text-xs sm:text-sm font-bold tracking-normal">{toast.message}</p>
             <button
               type="button"
               onClick={() => setToast(null)}
-              className="ml-3 rounded-xl p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+              className="ml-2 rounded-lg p-1 hover:bg-black/5 transition cursor-pointer"
               title="Đóng thông báo"
             >
               <X size={16} />

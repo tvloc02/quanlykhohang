@@ -217,6 +217,10 @@ interface SmartSlottingCacheEntry {
 
 const smartSlottingCache = new Map<string, SmartSlottingCacheEntry>();
 
+export function clearSmartSlottingCache() {
+  smartSlottingCache.clear();
+}
+
 function getCachedSmartSlotting(whCode?: string) {
   const key = (whCode || '').trim().toUpperCase() || 'ALL';
   const entry = smartSlottingCache.get(key);
@@ -437,9 +441,9 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           }
         } catch {}
 
-        // 4. Fallback: Parse customBins from stored warehouses & dbSubWarehouses topology
+        // 4. Fallback: Parse customBins from current warehouse topology ONLY
         try {
-          const sources = [dbSubWarehouses, currentWarehouseObj?.subWarehouses, getStoredWarehouses().flatMap((w) => w.subWarehouses || [])];
+          const sources = [dbSubWarehouses, currentWarehouseObj?.subWarehouses];
           sources.forEach((subList) => {
             if (!Array.isArray(subList)) return;
             subList.forEach((sub: any) => {
@@ -455,18 +459,34 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                     const short = (cleanBin.split('-').pop() || cleanBin).toUpperCase();
 
                     if (!isStagingNote && !isEmptyNote && pct > 0) {
-                      // Extract productName from noteStr if available
-                      let pName = noteStr.replace(/Đã chứa:\s*\d+%/gi, '').replace(/\(\d+%\)/gi, '').replace(/\[[^\]]+\]/gi, '').trim();
+                      let pName = '';
+                      let pSku = '';
+                      let pQty = pct;
+                      if (Array.isArray(cfg?.products) && cfg.products.length > 0) {
+                        pName = cfg.productName || cfg.products.map((p: any) => p.productName).join(', ');
+                        pSku = cfg.sku || cfg.products.map((p: any) => p.sku).filter(Boolean).join(', ');
+                        pQty = Number(cfg.totalPhysical || cfg.products.reduce((s: number, p: any) => s + (Number(p.qty) || 0), 0));
+                      } else {
+                        pName = cfg?.productName || noteStr.replace(/Đã chứa:\s*\d+%/gi, '').replace(/\(\d+%\)/gi, '').replace(/\[[^\]]+\]/gi, '').trim();
+                        pSku = cfg?.sku || '';
+                        pQty = Number(cfg?.totalPhysical || pct);
+                      }
                       if (!pName || pName === 'Ô Trống') pName = 'Sản phẩm tồn kho';
 
-                      if (!occMap.has(cleanBin)) occMap.set(cleanBin, pct);
-                      if (norm && !occMap.has(norm)) occMap.set(norm, pct);
-                      if (short && !occMap.has(short)) occMap.set(short, pct);
+                      occMap.set(cleanBin, pQty);
+                      if (norm) occMap.set(norm, pQty);
 
-                      const prodObj = { productId: '', sku: '', productName: pName, qty: pct };
-                      if (!prodMap.has(cleanBin)) prodMap.set(cleanBin, prodObj);
-                      if (norm && !prodMap.has(norm)) prodMap.set(norm, prodObj);
-                      if (short && !prodMap.has(short)) prodMap.set(short, prodObj);
+                      const rackCell = `${rk.rackCode || rk.id}-${short}`;
+                      const normRackCell = normalizeBinKey(rackCell);
+                      occMap.set(rackCell, pQty);
+                      if (normRackCell) occMap.set(normRackCell, pQty);
+
+                      const prodObj = { productId: '', sku: pSku, productName: pName, qty: pQty };
+                      prodMap.set(cleanBin, prodObj);
+                      if (norm) prodMap.set(norm, prodObj);
+                      if (short) prodMap.set(short, prodObj);
+                      prodMap.set(rackCell, prodObj);
+                      if (normRackCell) prodMap.set(normRackCell, prodObj);
                     } else if (pct <= 0 || isEmptyNote) {
                       // Explicitly clean up any empty bin keys
                       occMap.delete(cleanBin);
@@ -498,8 +518,18 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     }
 
     loadOccupied();
+
+    const handleStorage = () => {
+      clearSmartSlottingCache();
+      loadOccupied();
+    };
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('warehouse-goods-cleared', handleStorage);
+
     return () => {
       isMounted = false;
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('warehouse-goods-cleared', handleStorage);
     };
   }, [isOpen, warehouseCode, products, items, dbSubWarehouses]);
 
@@ -637,10 +667,20 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           (sub.racks || []).forEach((rk: any) => {
             const cfg = rk.customBins?.[binKey] || rk.customBins?.[normKey];
             if (cfg && Number(cfg.occupancyPct || 0) > 0) {
-              const notes = String(cfg.notes || '').toLowerCase();
-              const isGenNote = !notes || notes.includes('đã chứa') || notes.includes('tồn kho') || notes.includes('hàng trong kho');
-              if ((targetName && notes.includes(targetName)) || (targetSku && notes.includes(targetSku)) || isGenNote) {
-                foundMatch = true;
+              if (Array.isArray(cfg.products) && cfg.products.length > 0) {
+                const hasMatchingSubProd = cfg.products.some((p: any) => {
+                  const pSku = String(p.sku || '').trim().toLowerCase();
+                  const pName = String(p.productName || '').trim().toLowerCase();
+                  return (targetSku && pSku && targetSku === pSku) ||
+                         (targetName && pName && (targetName.includes(pName) || pName.includes(targetName)));
+                });
+                if (hasMatchingSubProd) foundMatch = true;
+              } else {
+                const notes = String(cfg.notes || '').toLowerCase();
+                const isGenNote = !notes || notes.includes('đã chứa') || notes.includes('tồn kho') || notes.includes('hàng trong kho');
+                if ((targetName && notes.includes(targetName)) || (targetSku && notes.includes(targetSku)) || isGenNote) {
+                  foundMatch = true;
+                }
               }
             }
           });
@@ -897,7 +937,16 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     const initialMap: Record<string, string[]> = {};
     const initialManualMap: Record<string, Record<string, { qty: number; pct: number; isManual?: boolean; isCustomQty?: boolean }>> = {};
     const initialAllocatedQtyMap: Record<string, Record<string, number>> = {};
-    const initialUpdates: Array<{ targetBinCode: string; targetShortCode: string; pct: number; notes?: string }> = [];
+    const initialUpdates: Array<{
+      targetBinCode: string;
+      targetShortCode: string;
+      pct: number;
+      notes?: string;
+      productName?: string;
+      sku?: string;
+      qty?: number;
+      unit?: string;
+    }> = [];
 
     // Preserve existing assigned bins from order rows ONLY (no forced auto-allocation for all items)
     items.forEach((item) => {
@@ -1005,6 +1054,10 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
               targetShortCode: shortB,
               pct: binPct,
               notes: 'Đã chọn nhập: ' + binQty + ' ' + (item.unit || 'cái') + ' (' + binPct + '%)',
+              productName: item.productName,
+              sku: item.productSku || (item as any).sku,
+              qty: binQty,
+              unit: item.unit || 'cái',
             });
           });
         } else {
@@ -1151,7 +1204,16 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
   };
 
   const batchUpdateSubWarehousesTopology = (
-    updates: Array<{ targetBinCode: string; targetShortCode: string; pct: number; notes?: string }> = [],
+    updates: Array<{
+      targetBinCode: string;
+      targetShortCode: string;
+      pct: number;
+      notes?: string;
+      productName?: string;
+      sku?: string;
+      qty?: number;
+      unit?: string;
+    }> = [],
     removals: Array<{ targetBinCode: string; targetShortCode?: string }> = []
   ) => {
     setDbSubWarehouses((prevSubs) => {
@@ -1165,6 +1227,41 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             const cleanTarget = targetBinCode.split('(')[0].trim();
             const shortC = (targetShortCode || cleanTarget.split('-').pop() || cleanTarget).toUpperCase();
             const normKey = normalizeBinKey(cleanTarget);
+            const prevEntry = custom[cleanTarget] || custom[shortC] || (normKey ? custom[normKey] : null);
+
+            if (prevEntry && Array.isArray(prevEntry.products) && prevEntry.products.length > 0) {
+              const curSku = (currentItem?.productSku || '').trim().toUpperCase();
+              const curName = (currentItem?.productName || '').trim().toLowerCase();
+              const remainingProds = prevEntry.products.filter((p: any) => {
+                const pSku = (p.sku || '').trim().toUpperCase();
+                const pName = (p.productName || '').trim().toLowerCase();
+                return !((curSku && pSku && curSku === pSku) || (curName && pName && (curName.includes(pName) || pName.includes(curName))));
+              });
+
+              if (remainingProds.length > 0) {
+                const totalPct = remainingProds.reduce((sum: number, p: any) => sum + (Number(p.occupancyPct) || 0), 0);
+                const totalQty = remainingProds.reduce((sum: number, p: any) => sum + (Number(p.qty) || 0), 0);
+                const descNote = `Đã chứa: ${totalPct}% (${remainingProds.map((p: any) => `${p.productName}: ${p.qty} ${p.unit || 'cái'} [${p.occupancyPct}%]`).join(', ')})`;
+                const updated = {
+                  ...prevEntry,
+                  occupancyPct: totalPct,
+                  totalPhysical: totalQty,
+                  products: remainingProds,
+                  notes: descNote,
+                  productName: remainingProds.map((p: any) => p.productName).join(', '),
+                  sku: remainingProds.map((p: any) => p.sku).filter(Boolean).join(', '),
+                };
+                custom[cleanTarget] = updated;
+                custom[shortC] = updated;
+                if (normKey) custom[normKey] = updated;
+                const rackShort = `${rk.rackCode}-${shortC}`;
+                custom[rackShort] = updated;
+                const normRS = normalizeBinKey(rackShort);
+                if (normRS) custom[normRS] = updated;
+                return;
+              }
+            }
+
             delete custom[cleanTarget];
             delete custom[targetBinCode];
             delete custom[shortC];
@@ -1176,20 +1273,78 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           });
 
           // 2. Process updates
-          updates.forEach(({ targetBinCode, targetShortCode, pct, notes }) => {
+          updates.forEach(({ targetBinCode, targetShortCode, pct, notes, productName, sku, qty, unit }) => {
             const cleanTarget = targetBinCode.split('(')[0].trim();
             const shortC = (targetShortCode || cleanTarget.split('-').pop() || cleanTarget).toUpperCase();
             const isTargetRack = cleanTarget.includes(rk.id || rk.rackCode) || rk.id === activeRackId || rk.rackCode === activeRackId;
             if (isTargetRack) {
+              const normKey = normalizeBinKey(cleanTarget);
+              const prevEntry = custom[cleanTarget] || custom[shortC] || (normKey ? custom[normKey] : null);
+
+              let existingProds: Array<{ sku?: string; productName: string; qty: number; occupancyPct: number; unit?: string }> = [];
+              if (prevEntry && Array.isArray(prevEntry.products) && prevEntry.products.length > 0) {
+                existingProds = prevEntry.products.map((p: any) => ({ ...p }));
+              } else if (prevEntry && prevEntry.productName && Number(prevEntry.occupancyPct || 0) > 0) {
+                existingProds = [{
+                  sku: prevEntry.sku || '',
+                  productName: prevEntry.productName,
+                  qty: Number(prevEntry.totalPhysical || 0),
+                  occupancyPct: Number(prevEntry.occupancyPct || 100),
+                  unit: 'cái',
+                }];
+              }
+
+              const curProdName = productName || currentItem?.productName || 'Hàng hóa';
+              const curSku = sku || currentItem?.productSku || (currentItem as any)?.sku || '';
+              const curUnit = unit || currentItem?.unit || 'cái';
+              const curQty = qty !== undefined ? Number(qty) : Number(currentItem?.qty || 1);
+              const curPct = pct;
+
+              const matchIdx = existingProds.findIndex(
+                (p) =>
+                  (curSku && p.sku && curSku.toUpperCase() === p.sku.toUpperCase()) ||
+                  (curProdName && p.productName && curProdName.toLowerCase() === p.productName.toLowerCase())
+              );
+
+              if (matchIdx >= 0) {
+                existingProds[matchIdx] = {
+                  ...existingProds[matchIdx],
+                  qty: curQty,
+                  occupancyPct: curPct,
+                  unit: curUnit,
+                };
+              } else {
+                existingProds.push({
+                  sku: curSku,
+                  productName: curProdName,
+                  qty: curQty,
+                  occupancyPct: curPct,
+                  unit: curUnit,
+                });
+              }
+
+              const totalShelfPct = Math.min(100, existingProds.reduce((sum, p) => sum + (Number(p.occupancyPct) || 0), 0));
+              const totalShelfQty = existingProds.reduce((sum, p) => sum + (Number(p.qty) || 0), 0);
+              const descNote = `Đã chứa: ${totalShelfPct}% (${existingProds.map((p) => `${p.productName}: ${p.qty} ${p.unit || 'cái'} [${p.occupancyPct}%]`).join(', ')})`;
+
               const entry = {
-                occupancyPct: pct,
+                ...(prevEntry || {}),
+                occupancyPct: totalShelfPct,
+                totalPhysical: totalShelfQty,
+                products: existingProds,
+                productName: existingProds.map((p) => p.productName).join(', '),
+                sku: existingProds.map((p) => p.sku).filter(Boolean).join(', '),
+                notes: notes || descNote,
                 maxWeight: 500,
-                notes: notes || `Sức chứa ${pct}% (Còn trống ${100 - pct}%)`,
               };
+
               custom[cleanTarget] = entry;
               custom[shortC] = entry;
-              const normKey = normalizeBinKey(cleanTarget);
               if (normKey) custom[normKey] = entry;
+              const rackShort = `${rk.rackCode}-${shortC}`;
+              custom[rackShort] = entry;
+              const normRS = normalizeBinKey(rackShort);
+              if (normRS) custom[normRS] = entry;
             }
           });
 
@@ -1294,6 +1449,10 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
               targetShortCode: shortB,
               pct: binPct,
               notes: 'Đã chọn nhập: ' + binQty + ' ' + (activeItem?.unit || 'cái') + ' (' + binPct + '%)',
+              productName: activeItem?.productName,
+              sku: activeItem?.productSku || (activeItem as any)?.sku,
+              qty: binQty,
+              unit: activeItem?.unit || 'cái',
             };
           });
 
@@ -1406,6 +1565,10 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             targetShortCode: shortB,
             pct: binPct,
             notes: 'Đã chọn nhập: ' + binQty + ' ' + (activeItem?.unit || 'cái') + ' (' + binPct + '%)',
+            productName: activeItem?.productName,
+            sku: activeItem?.productSku || (activeItem as any)?.sku,
+            qty: binQty,
+            unit: activeItem?.unit || 'cái',
           };
         });
 
@@ -1465,6 +1628,23 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
       const isCustomQty = newQty !== undefined && newQty > 0;
       const calcQty = isCustomQty ? newQty : 0;
       const entry = { qty: calcQty, pct: calcPct, isManual: true, isCustomQty };
+
+      const isKnownOrderItem = items.some((i) => i.rowId === rId);
+      if (!isKnownOrderItem) {
+        const isRemoving = pct <= 0 && (!newQty || newQty <= 0);
+        if (isRemoving) {
+          batchUpdateSubWarehousesTopology([], [{ targetBinCode: cleanBinCode, targetShortCode: shortCode }]);
+        } else {
+          batchUpdateSubWarehousesTopology([{
+            targetBinCode: cleanBinCode,
+            targetShortCode: shortCode,
+            pct: calcPct,
+            qty: calcQty,
+            notes: notes || `Đã lưu: ${calcQty} cái (${calcPct}%)`,
+          }]);
+        }
+        return;
+      }
 
       setManualBinAllocations((prevManual) => {
         const rowManual = { ...(prevManual[rId] || {}) };
@@ -1545,6 +1725,10 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             targetShortCode: shortB,
             pct: bPct,
             notes: 'Đã chọn nhập: ' + bQty + ' ' + (targetItem?.unit || 'cái') + ' (' + bPct + '%)',
+            productName: targetItem?.productName,
+            sku: targetItem?.productSku || (targetItem as any)?.sku,
+            qty: bQty,
+            unit: targetItem?.unit || 'cái',
           };
         });
 
@@ -1676,6 +1860,10 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
               targetShortCode: shortB,
               pct: binPct,
               notes: 'Đã chọn nhập: ' + binQty + ' ' + (activeItem?.unit || 'cái') + ' (' + binPct + '%)',
+              productName: activeItem?.productName,
+              sku: activeItem?.productSku || (activeItem as any)?.sku,
+              qty: binQty,
+              unit: activeItem?.unit || 'cái',
             };
           });
 
@@ -2211,16 +2399,16 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-1.5 sm:p-3 animate-in fade-in duration-200">
       <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border-2 border-cyan-500 dark:border-indigo-900/60 w-full max-w-[98vw] max-w-[1650px] h-[95vh] flex flex-col overflow-hidden">
         {/* Modal Header - Master Cyan/Indigo Theme */}
-        <div className="bg-cyan-700 dark:bg-indigo-900 text-white px-6 py-3.5 flex items-center justify-between shadow-sm border-b dark:border-indigo-800">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-2xl bg-cyan-800 dark:bg-indigo-950 border border-cyan-500/50 dark:border-indigo-700 flex items-center justify-center text-cyan-200 dark:text-indigo-300 shadow-inner">
-              <Sparkles className="h-6 w-6" />
+        <div className="bg-cyan-700 dark:bg-indigo-900 text-white px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between shadow-sm border-b dark:border-indigo-800 shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-xl sm:rounded-2xl bg-cyan-800 dark:bg-indigo-950 border border-cyan-500/50 dark:border-indigo-700 flex items-center justify-center text-cyan-200 dark:text-indigo-300 shadow-inner shrink-0">
+              <Sparkles className="h-4 w-4 sm:h-6 sm:w-6" />
             </div>
-            <div>
-              <h3 className="text-base font-black uppercase tracking-wide flex items-center gap-2">
-                <span>Trợ lý AI Chỉ dẫn Vị trí & Sơ đồ Ô Kệ Kho (Smart WMS Slotting Grid)</span>
+            <div className="min-w-0">
+              <h3 className="text-xs sm:text-base font-black uppercase tracking-wide flex items-center gap-1.5 sm:gap-2 truncate">
+                <span className="truncate">Trợ lý AI Chỉ dẫn Vị trí & Sơ đồ Ô Kệ Kho</span>
                 {readOnly && (
-                  <span className="bg-amber-400 text-amber-950 text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase border border-amber-300 tracking-normal shadow-2xs">
+                  <span className="bg-amber-400 text-amber-950 text-[10px] px-2 py-0.2 rounded-full font-black uppercase border border-amber-300 tracking-normal shadow-2xs shrink-0">
                     Chế độ xem
                   </span>
                 )}
@@ -2259,9 +2447,9 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         )}
 
         {/* Modal Body */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-0 flex-1 overflow-hidden bg-slate-50 dark:bg-slate-950">
+        <div className="flex flex-col md:grid md:grid-cols-12 gap-0 flex-1 overflow-y-auto md:overflow-hidden bg-slate-50 dark:bg-slate-950">
           {/* Left Column: AI Interactive Chat */}
-          <div className="md:col-span-4 border-r border-cyan-200 dark:border-indigo-900/60 bg-cyan-50/30 dark:bg-slate-900 flex flex-col h-full min-h-0 overflow-hidden">
+          <div className="md:col-span-4 border-b md:border-b-0 md:border-r border-cyan-200 dark:border-indigo-900/60 bg-cyan-50/30 dark:bg-slate-900 flex flex-col h-[280px] md:h-full min-h-0 shrink-0 md:shrink">
             <div className="p-3 bg-white dark:bg-slate-950 border-b border-cyan-100 dark:border-indigo-900/40 flex items-center justify-between text-xs font-black text-cyan-900 dark:text-indigo-300 shadow-2xs shrink-0">
               <span className="flex items-center gap-2">
                 <Bot className="h-5 w-5 text-cyan-600 dark:text-indigo-400" /> Trợ lý AI Hỏi Đáp Slotting
@@ -2364,7 +2552,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           </div>
 
           {/* Right Column: Interactive Visual Rack Topology Grid */}
-          <div className="md:col-span-8 p-4 flex flex-col h-full overflow-hidden bg-white dark:bg-slate-900">
+          <div className="md:col-span-8 p-2.5 sm:p-4 flex flex-col flex-1 min-h-[400px] md:h-full md:overflow-hidden bg-white dark:bg-slate-900">
             {/* 1. Item Switcher Bar */}
             <div className="mb-3 bg-cyan-50/80 dark:bg-indigo-950/50 p-2.5 rounded-2xl border border-cyan-200 dark:border-indigo-900/60 flex items-center justify-between">
               <div className="flex items-center gap-2 overflow-x-auto">
@@ -2540,7 +2728,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             </div>
 
             {/* Footer Summary & Action Buttons */}
-            <div className="mt-3 pt-3 border-t border-slate-200 dark:border-indigo-900/40 flex items-center justify-between gap-3">
+            <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-slate-200 dark:border-indigo-900/40 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
               <div className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
                 <span className="text-slate-500 dark:text-slate-400">
                   {readOnly ? 'Vị trí ô đã lưu trữ:' : mode === 'OUTBOUND_TRANSFER' ? 'Các Ô đang chọn xuất:' : 'Các Ô đang chọn nhập:'}

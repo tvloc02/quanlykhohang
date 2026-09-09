@@ -290,16 +290,38 @@ export default function CustomerGroupsPage() {
                       <td className="px-4 py-3 text-gray-500 text-xs">{g.createdAt}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-1.5">
-                          {canEdit && (
-                            <button onClick={() => openEdit(g)} className="p-1.5 rounded-lg hover:bg-cyan-50 text-cyan-600 hover:text-cyan-700 transition cursor-pointer" title="Sửa">
-                              <Pencil size={15} />
-                            </button>
-                          )}
-                          {canDelete && (
-                            <button onClick={() => openDelete(g)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-500 hover:text-red-600 transition cursor-pointer" title="Xóa">
-                              <Trash2 size={15} />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            disabled={!canEdit}
+                            onClick={() => {
+                              if (!canEdit) return;
+                              openEdit(g);
+                            }}
+                            className={`p-1.5 rounded-lg transition ${
+                              !canEdit
+                                ? 'text-gray-300 opacity-30 cursor-not-allowed pointer-events-none'
+                                : 'hover:bg-cyan-50 text-cyan-600 hover:text-cyan-700 cursor-pointer'
+                            }`}
+                            title={!canEdit ? 'Không có quyền sửa' : 'Sửa'}
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!canDelete}
+                            onClick={() => {
+                              if (!canDelete) return;
+                              openDelete(g);
+                            }}
+                            className={`p-1.5 rounded-lg transition ${
+                              !canDelete
+                                ? 'text-gray-300 opacity-30 cursor-not-allowed pointer-events-none'
+                                : 'hover:bg-red-50 text-red-500 hover:text-red-600 cursor-pointer'
+                            }`}
+                            title={!canDelete ? 'Không có quyền xóa' : 'Xóa'}
+                          >
+                            <Trash2 size={15} />
+                          </button>
                         </div>
                       </td>
                     </tr>

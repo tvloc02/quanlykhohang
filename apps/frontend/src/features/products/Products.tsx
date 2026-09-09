@@ -47,7 +47,7 @@ import { usePermissions } from '../../shared/hooks/usePermissions';
 function Toast({ message, type, onClose, onUndo }: { message: string; type: 'success' | 'error'; onClose: () => void; onUndo?: () => void }) {
   React.useEffect(() => {
     if (message) {
-      const timer = setTimeout(() => onClose(), 5000);
+      const timer = setTimeout(() => onClose(), 3000);
       return () => clearTimeout(timer);
     }
   }, [message, onClose]);
@@ -55,8 +55,8 @@ function Toast({ message, type, onClose, onUndo }: { message: string; type: 'suc
   if (!message) return null;
 
   return (
-    <div className={`fixed top-4 right-4 z-[60] flex items-center gap-3 rounded-xl px-4 py-3 shadow-lg transition-all ${type === 'error' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-emerald-50 text-emerald-600 border border-emerald-200'}`}>
-      {type === 'error' ? <XCircle size={20} /> : <CheckCircle size={20} />}
+    <div className={`fixed top-4 right-4 z-[9999] flex items-center gap-3 rounded-xl px-4 py-3 shadow-lg transition-all animate-in fade-in slide-in-from-top-4 duration-200 ${type === 'error' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+      {type === 'error' ? <XCircle size={20} className="shrink-0 text-red-600" /> : <CheckCircle size={20} className="shrink-0 text-emerald-600" />}
       <p className="text-sm font-semibold">{message}</p>
       {onUndo && (
         <button
@@ -70,7 +70,7 @@ function Toast({ message, type, onClose, onUndo }: { message: string; type: 'suc
           Hoàn tác
         </button>
       )}
-      <button onClick={onClose} className="ml-1 rounded-lg p-1 hover:bg-white/50 transition">
+      <button onClick={onClose} className="ml-1 rounded-lg p-1 hover:bg-black/5 transition cursor-pointer">
         <X size={16} />
       </button>
     </div>
@@ -717,10 +717,10 @@ function normalizeProduct(product: RawProduct & Record<string, any>): Product {
 }
 
 export default function Products() {
-  const { canPerformAction, isAdmin } = usePermissions();
-  const canCreate = isAdmin || canPerformAction('products-main', 'create');
-  const canEdit = isAdmin || canPerformAction('products-main', 'edit');
-  const canDelete = isAdmin || canPerformAction('products-main', 'delete');
+  const { canPerformAction } = usePermissions();
+  const canCreate = canPerformAction('products-main', 'create');
+  const canEdit = canPerformAction('products-main', 'edit');
+  const canDelete = canPerformAction('products-main', 'delete');
 
   const [products, setProducts] = React.useState<Product[]>([]);
   const [search, setSearch] = React.useState('');
@@ -2350,27 +2350,39 @@ export default function Products() {
                             <History size={18} strokeWidth={2.2} />
                           </button>
                           {/* 3. Sửa */}
-                          {canEdit && (
-                            <button
-                              type="button"
-                              className="flex h-8 w-8 items-center justify-center rounded-[12px] border-2 border-cyan-600 bg-white text-cyan-600 hover:bg-cyan-50 hover:border-cyan-700 transition cursor-pointer shadow-xs"
-                              title="Sửa hàng hóa"
-                              onClick={() => openProductModal('edit', product)}
-                            >
-                              <Pencil size={18} strokeWidth={2.2} />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            disabled={!canEdit}
+                            className={`flex h-8 w-8 items-center justify-center rounded-[12px] border-2 shadow-xs transition ${
+                              !canEdit
+                                ? 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 opacity-30 cursor-not-allowed pointer-events-none'
+                                : 'border-cyan-600 bg-white text-cyan-600 hover:bg-cyan-50 hover:border-cyan-700 cursor-pointer'
+                            }`}
+                            title={!canEdit ? 'Không có quyền sửa' : 'Sửa hàng hóa'}
+                            onClick={() => {
+                              if (!canEdit) return;
+                              openProductModal('edit', product);
+                            }}
+                          >
+                            <Pencil size={18} strokeWidth={2.2} />
+                          </button>
                           {/* 4. Xóa */}
-                          {canDelete && (
-                            <button
-                              type="button"
-                              className="flex h-8 w-8 items-center justify-center rounded-[12px] border-2 border-rose-600 bg-white text-rose-600 hover:bg-rose-50 hover:border-rose-700 transition cursor-pointer shadow-xs"
-                              title="Xóa hàng hóa"
-                              onClick={() => openProductModal('delete', product)}
-                            >
-                              <Trash2 size={18} strokeWidth={2.2} />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            disabled={!canDelete}
+                            className={`flex h-8 w-8 items-center justify-center rounded-[12px] border-2 shadow-xs transition ${
+                              !canDelete
+                                ? 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 opacity-30 cursor-not-allowed pointer-events-none'
+                                : 'border-rose-600 bg-white text-rose-600 hover:bg-rose-50 hover:border-rose-700 cursor-pointer'
+                            }`}
+                            title={!canDelete ? 'Không có quyền xóa' : 'Xóa hàng hóa'}
+                            onClick={() => {
+                              if (!canDelete) return;
+                              openProductModal('delete', product);
+                            }}
+                          >
+                            <Trash2 size={18} strokeWidth={2.2} />
+                          </button>
                         </div>
                       </td>
                     )}

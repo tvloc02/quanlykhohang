@@ -588,15 +588,13 @@ export class DashboardService {
       .addGroupBy("COALESCE(w.code, d.warehouseCode, '')")
       .addGroupBy("COALESCE(c.name, 'Khách hàng')");
 
-    const sDate = parseSafeDate(startDate);
-    const eDate = parseSafeDate(endDate);
+    const sDate = parseSafeDate(startDate, false);
+    const eDate = parseSafeDate(endDate, true);
     if (sDate) {
-      qb.andWhere('o.createdAt >= :sDate', { sDate });
+      qb.andWhere('COALESCE(o.orderDate, o.createdAt) >= :sDate', { sDate });
     }
     if (eDate) {
-      const endOfDay = new Date(eDate);
-      endOfDay.setHours(23, 59, 59, 999);
-      qb.andWhere('o.createdAt <= :eDate', { eDate: endOfDay });
+      qb.andWhere('COALESCE(o.orderDate, o.createdAt) <= :eDate', { eDate });
     }
 
     const rows = await qb.getRawMany().catch(() => []);
@@ -649,8 +647,8 @@ export class DashboardService {
   }
 
   async getCashflowReport(startDate?: string, endDate?: string, branch?: string) {
-    const sDate = parseSafeDate(startDate);
-    const eDate = parseSafeDate(endDate);
+    const sDate = parseSafeDate(startDate, false);
+    const eDate = parseSafeDate(endDate, true);
 
     const inboundQb = this.inboundRepo.createQueryBuilder('i')
       .select('COALESCE(SUM(CAST(i.totalAmount AS DECIMAL(15,2))), 0)', 'total');
@@ -661,14 +659,12 @@ export class DashboardService {
       .select('COALESCE(SUM(CAST(d.totalLineAmount AS DECIMAL(14,2))), 0)', 'total');
 
     if (sDate) {
-      inboundQb.andWhere('i.createdAt >= :sDate', { sDate });
-      outboundQb.andWhere('o.createdAt >= :sDate', { sDate });
+      inboundQb.andWhere('COALESCE(i.orderDate, i.expectedDate, i.createdAt) >= :sDate', { sDate });
+      outboundQb.andWhere('COALESCE(o.orderDate, o.createdAt) >= :sDate', { sDate });
     }
     if (eDate) {
-      const endOfDay = new Date(eDate);
-      endOfDay.setHours(23, 59, 59, 999);
-      inboundQb.andWhere('i.createdAt <= :eDate', { eDate: endOfDay });
-      outboundQb.andWhere('o.createdAt <= :eDate', { eDate: endOfDay });
+      inboundQb.andWhere('COALESCE(i.orderDate, i.expectedDate, i.createdAt) <= :eDate', { eDate });
+      outboundQb.andWhere('COALESCE(o.orderDate, o.createdAt) <= :eDate', { eDate });
     }
 
     const [inboundTotal, outboundTotal] = await Promise.all([
@@ -1060,20 +1056,39 @@ export class DashboardService {
 
   /** BÁO CÁO CHI TIẾT HÀNG BÁN RA */
   async getSalesDetailReport(startDate?: string, endDate?: string) {
-    const outbounds = await this.outboundRepo.find({ relations: ['details', 'details.product'] }).catch(() => []);
+    const sDate = parseSafeDate(startDate, false);
+    const eDate = parseSafeDate(endDate, true);
+
+    const obQb = this.outboundRepo.createQueryBuilder('o')
+      .leftJoinAndSelect('o.details', 'd')
+      .leftJoinAndSelect('d.product', 'p')
+      .leftJoinAndSelect('o.customer', 'c')
+      .where('(o.orderType IS NULL OR o.orderType != :disposalType)', { disposalType: 'disposal' })
+      .andWhere('(o.orderNo IS NULL OR o.orderNo NOT LIKE :xhPrefix)', { xhPrefix: 'XH%' })
+      .andWhere('(o.status IS NULL OR o.status NOT IN (:...cancelledStatuses))', {
+        cancelledStatuses: ['Đã hủy', 'CANCELLED', 'cancelled'],
+      });
+
+    if (sDate) {
+      obQb.andWhere('COALESCE(o.orderDate, o.createdAt) >= :sDate', { sDate });
+    }
+    if (eDate) {
+      obQb.andWhere('COALESCE(o.orderDate, o.createdAt) <= :eDate', { eDate });
+    }
+
+    const outbounds = await obQb.orderBy('COALESCE(o.orderDate, o.createdAt)', 'DESC').getMany().catch(() => []);
 
     const rows: any[] = [];
     let counter = 1;
 
     outbounds.forEach((o) => {
-      const orderType = (o.orderType || '').toLowerCase();
-      const orderNo = (o.orderNo || '').toUpperCase();
-      // Loại trừ đơn xuất hủy vì xuất hủy không phải hàng bán ra
-      if (orderType === 'disposal' || orderNo.startsWith('XH')) {
-        return;
-      }
-
       const details = o.details || [];
+      const orderDateVal = o.orderDate || o.createdAt;
+      const dObj = orderDateVal ? new Date(orderDateVal) : new Date();
+      const dateStr = !isNaN(dObj.getTime())
+        ? `${dObj.getFullYear()}-${String(dObj.getMonth() + 1).padStart(2, '0')}-${String(dObj.getDate()).padStart(2, '0')}`
+        : '';
+
       details.forEach((d) => {
         const qty = Number(d.requiredQty || d.pickedQty || 1);
         const price = Number(d.unitPrice || 0);
@@ -1082,14 +1097,15 @@ export class DashboardService {
         rows.push({
           id: String(counter++),
           orderNo: o.orderNo || `XBH-${o.id}`,
-          date: o.orderDate ? new Date(o.orderDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-          customerName: o.customerName || 'Khách bán lẻ',
+          date: dateStr,
+          customerName: o.customerName || o.customer?.name || 'Khách bán lẻ',
           productSku: d.productSku || d.product?.internalSku || 'SKU',
           productName: d.productName || d.product?.name || 'Sản phẩm',
           unit: d.unit || d.product?.unit || 'Cái',
           qty,
           price,
           totalAmount: revenue,
+          branch: o.branchCode || 'KHO-NVL',
         });
       });
     });
@@ -1099,19 +1115,29 @@ export class DashboardService {
 
   /** BÁO CÁO HÀNG BÁN RA THEO NHÂN VIÊN */
   async getSalesByStaffReport(startDate?: string, endDate?: string) {
-    const outbounds = await this.outboundRepo.find().catch(() => []);
+    const sDate = parseSafeDate(startDate, false);
+    const eDate = parseSafeDate(endDate, true);
+
+    const obQb = this.outboundRepo.createQueryBuilder('o')
+      .where('(o.orderType IS NULL OR o.orderType != :disposalType)', { disposalType: 'disposal' })
+      .andWhere('(o.orderNo IS NULL OR o.orderNo NOT LIKE :xhPrefix)', { xhPrefix: 'XH%' })
+      .andWhere('(o.status IS NULL OR o.status NOT IN (:...cancelledStatuses))', {
+        cancelledStatuses: ['Đã hủy', 'CANCELLED', 'cancelled'],
+      });
+
+    if (sDate) {
+      obQb.andWhere('COALESCE(o.orderDate, o.createdAt) >= :sDate', { sDate });
+    }
+    if (eDate) {
+      obQb.andWhere('COALESCE(o.orderDate, o.createdAt) <= :eDate', { eDate });
+    }
+
+    const outbounds = await obQb.getMany().catch(() => []);
     const staffMap = new Map<string, { orders: number; revenue: number; discount: number }>();
 
     outbounds.forEach((o) => {
-      const orderType = (o.orderType || '').toLowerCase();
-      const orderNo = (o.orderNo || '').toUpperCase();
-      // Loại trừ đơn xuất hủy khỏi doanh số nhân viên
-      if (orderType === 'disposal' || orderNo.startsWith('XH')) {
-        return;
-      }
-
       const staff = o.employeeName || 'Quản trị viên hệ thống';
-      const rev = Number(o.totalAmount || 0);
+      const rev = Number(o.totalAmount || o.subtotal || 0);
       const disc = Number(o.discount || 0);
 
       const current = staffMap.get(staff) || { orders: 0, revenue: 0, discount: 0 };
@@ -1188,6 +1214,66 @@ export class DashboardService {
       };
     };
 
+    // Xây dựng bảng tra cứu cấu hình ô kệ từ quản lý kho (customBins từ /warehouses/:id/edit)
+    const warehouseBinConfigMap = new Map<string, any>();
+    allWarehouses.forEach((w) => {
+      const whCode = String(w.code || w.id || '').toUpperCase().trim();
+      let subs: any[] = [];
+      try {
+        subs = typeof w.subWarehouses === 'string' ? JSON.parse(w.subWarehouses) : (Array.isArray(w.subWarehouses) ? w.subWarehouses : []);
+      } catch {}
+
+      subs.forEach((sub: any) => {
+        (sub.racks || []).forEach((rk: any) => {
+          const rkCode = String(rk.rackCode || rk.code || rk.id || '').toUpperCase().trim();
+          const customBins = rk.customBins || {};
+          Object.entries(customBins).forEach(([bKey, cfg]: [string, any]) => {
+            if (!cfg) return;
+            const cleanKey = bKey.toUpperCase().trim();
+            const shortBin = String(cfg.binCode || cleanKey.split('-').pop() || cleanKey).toUpperCase().trim();
+            const keys = [
+              `${whCode}_${cleanKey}`,
+              `${whCode}_${cleanKey.replace(/[^A-Z0-9]/g, '')}`,
+              `${whCode}_${rkCode}_${shortBin}`,
+              `${whCode}_${shortBin}`,
+              `${rkCode}_${shortBin}`,
+              cleanKey,
+            ];
+            keys.forEach((k) => {
+              if (!warehouseBinConfigMap.has(k)) {
+                warehouseBinConfigMap.set(k, { ...cfg, warehouseCode: whCode, rackCode: rkCode, binCode: shortBin });
+              }
+            });
+          });
+        });
+      });
+    });
+
+    const parseAssignedBinsFromNote = (note: string | null | undefined): string[] => {
+      if (!note || typeof note !== 'string') return [];
+      const prefix = '[Vị trí Ô:';
+      const startIdx = note.indexOf(prefix);
+      if (startIdx === -1) {
+        const m = note.match(/([A-Z0-9]+-ZONE-[A-Z0-9]+-R\d+-[A-Z0-9]+(?:\s*\(\d+%\))?(?:\s*\[\d+\s*cái\])?)/gi);
+        return m ? m.map((s) => s.trim()) : [];
+      }
+      let depth = 0;
+      const contentStart = startIdx + prefix.length;
+      let contentEnd = -1;
+      for (let i = startIdx; i < note.length; i++) {
+        if (note[i] === '[') depth++;
+        else if (note[i] === ']') {
+          depth--;
+          if (depth === 0) {
+            contentEnd = i;
+            break;
+          }
+        }
+      }
+      const rawContent = contentEnd !== -1 ? note.slice(contentStart, contentEnd) : note.slice(contentStart);
+      return rawContent.split(',').map((s) => s.trim()).filter(Boolean);
+    };
+
     const items: any[] = [];
     const now = new Date();
 
@@ -1232,11 +1318,13 @@ export class DashboardService {
         if (!matchName && !matchSku && !matchLoc && !matchWh) continue;
       }
 
-      // Khớp phiếu nhập theo vị trí ô kệ và productId (ưu tiên khớp chính xác ô kệ, fallback theo kho hoặc productId)
+      // Khớp phiếu nhập theo vị trí ô kệ và productId (ưu tiên khớp chính xác ô kệ và kho)
       const matchIb = inbounds.find((ib: any) => {
         if (Number(ib.productId) !== Number(prodId)) return false;
+        if (ib.warehouseCode && ib.warehouseCode !== comp.warehouseCode) return false;
         const note = String(ib.note || '');
-        return note.includes(comp.cleanLocation) || note.includes(comp.binCode);
+        return note.includes(comp.cleanLocation) ||
+               (note.includes(comp.binCode) && (!ib.warehouseCode || ib.warehouseCode === comp.warehouseCode));
       }) || inbounds.find((ib: any) => {
         return Number(ib.productId) === Number(prodId) && (!ib.warehouseCode || ib.warehouseCode === comp.warehouseCode);
       }) || inbounds.find((ib: any) => Number(ib.productId) === Number(prodId));
@@ -1259,13 +1347,126 @@ export class DashboardService {
         }
       }
 
+      // XÁC ĐỊNH % CHIẾM DỤNG VÀ GHI CHÚ CHÍNH XÁC:
+      const whCode = comp.warehouseCode;
+      const cleanLoc = comp.cleanLocation;
+      const rkCode = comp.rackCode;
+      const binCode = comp.binCode;
+
+      const lookupKeys = [
+        `${whCode}_${cleanLoc}`,
+        `${whCode}_${cleanLoc.replace(/[^A-Z0-9]/g, '')}`,
+        `${whCode}_${rkCode}_${binCode}`,
+        `${whCode}_${binCode}`,
+        `${rkCode}_${binCode}`,
+        cleanLoc,
+      ];
+
+      let cfg: any = null;
+      for (const k of lookupKeys) {
+        if (warehouseBinConfigMap.has(k)) {
+          cfg = warehouseBinConfigMap.get(k);
+          break;
+        }
+      }
+
       let occupancyPct = 0;
       let notes = '';
-      const parenMatch = sb.locationCode.match(/\((.*?)\)/);
-      if (parenMatch) {
-        notes = parenMatch[1];
-        const pctMatch = notes.match(/(\d+)%/);
-        if (pctMatch) occupancyPct = parseInt(pctMatch[1], 10);
+
+      // 1. Cấu hình chi tiết theo sản phẩm từ customBins của kệ kho (/warehouses/:id/edit)
+      if (cfg && Array.isArray(cfg.products) && cfg.products.length > 0) {
+        const matchedProd = cfg.products.find((p: any) => {
+          if (p.sku && productSku && p.sku.trim().toUpperCase() === productSku.trim().toUpperCase()) return true;
+          if (p.productName && productName && p.productName.trim().toLowerCase() === productName.trim().toLowerCase()) return true;
+          if (p.productId && Number(p.productId) === Number(prodId)) return true;
+          return false;
+        });
+
+        if (matchedProd && matchedProd.occupancyPct !== undefined && Number(matchedProd.occupancyPct) >= 0) {
+          occupancyPct = Number(matchedProd.occupancyPct);
+          if (matchedProd.notes) notes = matchedProd.notes;
+        }
+      }
+
+      // 2. Kiểm tra nếu sb.locationCode có sẵn phần trăm theo từng món (ví dụ: KH001-ZONE-A-R01-D1 (40%))
+      if (!occupancyPct) {
+        const parenMatch = sb.locationCode.match(/\((.*?)\)/);
+        if (parenMatch) {
+          const pctMatch = parenMatch[1].match(/(\d+(?:\.\d+)?)%/);
+          if (pctMatch) {
+            occupancyPct = parseFloat(pctMatch[1]);
+            if (!notes) notes = parenMatch[1];
+          }
+        }
+      }
+
+      // 3. Kiểm tra thông tin phân bổ từ phiếu nhập kho (inbound_details.note)
+      if (!occupancyPct) {
+        for (const ib of inbounds) {
+          if (Number(ib.productId) !== Number(prodId)) continue;
+          if (ib.warehouseCode && ib.warehouseCode !== whCode) continue;
+
+          const assignedBins = parseAssignedBinsFromNote(ib.note);
+          for (const ab of assignedBins) {
+            const abClean = extractCleanLoc(ab) || ab.split('(')[0].trim().toUpperCase();
+            const isMatch = abClean === cleanLoc ||
+              abClean.endsWith(`-${rkCode}-${binCode}`) ||
+              abClean.endsWith(`-${binCode}`) ||
+              abClean === binCode;
+
+            if (isMatch) {
+              const pctMatch = ab.match(/\((\d+(?:\.\d+)?)%\)/);
+              if (pctMatch) {
+                const basePct = parseFloat(pctMatch[1]);
+                const qtyMatch = ab.match(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/);
+                if (qtyMatch) {
+                  const inQty = parseFloat(qtyMatch[1]);
+                  if (inQty > 0 && qty < inQty) {
+                    occupancyPct = Math.round((qty / inQty) * basePct);
+                  } else {
+                    occupancyPct = basePct;
+                  }
+                } else {
+                  occupancyPct = basePct;
+                }
+                if (!notes) notes = ab;
+                break;
+              }
+            }
+          }
+          if (occupancyPct) break;
+        }
+      }
+
+      // 4. Nếu chưa có, lấy % dung tích chung của ô kệ từ quản lý kho
+      if (!occupancyPct && cfg && cfg.occupancyPct !== undefined && Number(cfg.occupancyPct) > 0) {
+        const itemsInSameBin = stockBalances.filter((other) => {
+          const c = parseLocComponents(other.locationCode);
+          return c && c.cleanLocation === cleanLoc && Number(other.totalPhysical || 0) > 0;
+        });
+        if (itemsInSameBin.length > 1) {
+          occupancyPct = Math.round(Number(cfg.occupancyPct) / itemsInSameBin.length);
+        } else {
+          occupancyPct = Number(cfg.occupancyPct);
+        }
+        if (!notes && cfg.notes) notes = cfg.notes;
+      }
+
+      // 5. Mặc định nếu ô có tồn kho nhưng chưa có cấu hình %
+      if (!occupancyPct && qty > 0) {
+        const itemsInSameBin = stockBalances.filter((other) => {
+          const c = parseLocComponents(other.locationCode);
+          return c && c.cleanLocation === cleanLoc && Number(other.totalPhysical || 0) > 0;
+        });
+        if (itemsInSameBin.length > 1) {
+          occupancyPct = Math.round(100 / itemsInSameBin.length);
+        } else {
+          occupancyPct = 100;
+        }
+      }
+
+      if (!notes) {
+        notes = cfg?.notes || (qty > 0 ? `Chứa: ${qty} ${unit} (${occupancyPct}%)` : 'Kệ trống');
       }
 
       items.push({
@@ -1292,8 +1493,8 @@ export class DashboardService {
         inboundDate: inboundDate ? inboundDate.toISOString() : null,
         poNumber,
         daysInStock,
-        occupancyPct: occupancyPct || (qty > 0 ? 100 : 0),
-        notes: notes || (qty > 0 ? `Chứa: ${qty} ${unit}` : 'Kệ trống'),
+        occupancyPct: Math.min(100, Math.max(0, occupancyPct)),
+        notes,
       });
     }
 

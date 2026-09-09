@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   BarChart3,
   BarChart2,
@@ -17,39 +17,36 @@ import {
   UserCheck,
   Users,
   Building2,
-} from "lucide-react";
-import { reportsApi } from "../api/reportsApi";
-import { ReportPrintHeader } from "../components/ReportPrintHeader";
-import { ReportPrintFooter } from "../components/ReportPrintFooter";
+} from 'lucide-react';
+import { reportsApi } from '../api/reportsApi';
+import { ReportPrintHeader } from '../components/ReportPrintHeader';
+import { ReportPrintFooter } from '../components/ReportPrintFooter';
 
-const API_BASE_URL = "/api";
+import { getLocalDateString, getInitialReportDates, parseAnyDateToLocalString } from '../../../shared/utils/dateUtils';
 
-const fmt = (v: number) =>
-  new Intl.NumberFormat("vi-VN").format(Math.round(v || 0));
+const API_BASE_URL = 'http://localhost:3000/api';
+
+const fmt = (v: number) => new Intl.NumberFormat('vi-VN').format(Math.round(v || 0));
 
 function authHeaders() {
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem('token');
   return {
-    Authorization: token ? `Bearer ${token}` : "",
-    "Content-Type": "application/json",
+    Authorization: token ? `Bearer ${token}` : '',
+    'Content-Type': 'application/json',
   };
 }
 
 function getInitialDates() {
-  const now = new Date();
-  const past14 = new Date(now);
-  past14.setDate(past14.getDate() - 14);
-
-  const formatD = (d: Date) => d.toISOString().split("T")[0];
-  return { firstDay: formatD(past14), today: formatD(now) };
+  return getInitialReportDates(14);
 }
 
 function formatSampleDate(dateStr: string): string {
-  if (!dateStr) return "";
-  const parts = dateStr.split("-");
+  if (!dateStr) return '';
+  const clean = parseAnyDateToLocalString(dateStr);
+  const parts = clean.split('-');
   if (parts.length === 3) {
-    const day = parts[2].padStart(2, "0");
-    const month = parts[1].padStart(2, "0");
+    const day = parts[2].padStart(2, '0');
+    const month = parts[1].padStart(2, '0');
     const year = parts[0].slice(-2);
     return `${day}/${month}/${year}`;
   }
@@ -73,23 +70,25 @@ function buildChartTimeline(
   rawGroupedItems: SalesGroupItem[],
   startDateStr: string,
   endDateStr: string,
-  timeGroup: "day" | "month" | "year",
+  timeGroup: 'day' | 'month' | 'year'
 ): SalesGroupItem[] {
   const map = new Map<string, SalesGroupItem>();
   rawGroupedItems.forEach((item) => map.set(item.dateOrName, item));
 
   const results: SalesGroupItem[] = [];
 
-  if (timeGroup === "day") {
+  if (timeGroup === 'day') {
     if (!startDateStr || !endDateStr) return rawGroupedItems;
-    const start = new Date(startDateStr);
-    const end = new Date(endDateStr);
+    const [sy, sm, sd] = startDateStr.split('-').map(Number);
+    const [ey, em, ed] = endDateStr.split('-').map(Number);
+    const start = new Date(sy, sm - 1, sd);
+    const end = new Date(ey, em - 1, ed);
     if (isNaN(start.getTime()) || isNaN(end.getTime())) return rawGroupedItems;
 
     const cur = new Date(start);
     let steps = 0;
     while (cur <= end && steps < 31) {
-      const key = cur.toISOString().split("T")[0];
+      const key = getLocalDateString(cur);
       const existing = map.get(key);
       if (existing) {
         results.push(existing);
@@ -110,7 +109,7 @@ function buildChartTimeline(
       cur.setDate(cur.getDate() + 1);
       steps++;
     }
-  } else if (timeGroup === "month") {
+  } else if (timeGroup === 'month') {
     if (!startDateStr || !endDateStr) return rawGroupedItems;
     const start = new Date(startDateStr);
     const end = new Date(endDateStr);
@@ -118,7 +117,7 @@ function buildChartTimeline(
     const endMonth = new Date(end.getFullYear(), end.getMonth(), 1);
     let steps = 0;
     while (cur <= endMonth && steps < 24) {
-      const key = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}`;
+      const key = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}`;
       const existing = map.get(key);
       if (existing) {
         results.push(existing);
@@ -141,9 +140,7 @@ function buildChartTimeline(
     }
   } else {
     // Year
-    const startYear = startDateStr
-      ? new Date(startDateStr).getFullYear()
-      : 2024;
+    const startYear = startDateStr ? new Date(startDateStr).getFullYear() : 2024;
     const endYear = endDateStr ? new Date(endDateStr).getFullYear() : 2026;
     for (let y = Math.max(startYear, 2024); y <= Math.max(endYear, 2026); y++) {
       const key = String(y);
@@ -174,28 +171,24 @@ export default function SalesReportPage() {
   const { firstDay, today } = useMemo(() => getInitialDates(), []);
   const [startDate, setStartDate] = useState(firstDay);
   const [endDate, setEndDate] = useState(today);
-  const [groupBy, setGroupBy] = useState<
-    "day" | "month" | "year" | "staff" | "customer" | "branch" | "chart"
-  >("day");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [groupBy, setGroupBy] = useState<'day' | 'month' | 'year' | 'staff' | 'customer' | 'branch' | 'chart'>('day');
+  const [searchTerm, setSearchTerm] = useState('');
   const [data, setData] = useState<SalesGroupItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useState('');
 
   // Chart states
-  const [chartType, setChartType] = useState<"bar" | "line">("bar");
-  const [chartTimeGroup, setChartTimeGroup] = useState<
-    "day" | "month" | "year"
-  >("day");
+  const [chartType, setChartType] = useState<'bar' | 'line'>('bar');
+  const [chartTimeGroup, setChartTimeGroup] = useState<'day' | 'month' | 'year'>('day');
   const [hoveredPoint, setHoveredPoint] = useState<SalesGroupItem | null>(null);
+
 
   // Fullscreen state
   const [isFullScreen, setIsFullScreen] = useState(false);
 
   // Column settings modal & detail modal
   const [showColumnSettings, setShowColumnSettings] = useState(false);
-  const [selectedGroupDetail, setSelectedGroupDetail] =
-    useState<SalesGroupItem | null>(null);
+  const [selectedGroupDetail, setSelectedGroupDetail] = useState<SalesGroupItem | null>(null);
 
   // Column visibility state
   const [columnVis, setColumnVis] = useState({
@@ -222,57 +215,140 @@ export default function SalesReportPage() {
     const handleFSChange = () => {
       setIsFullScreen(!!document.fullscreenElement);
     };
-    document.addEventListener("fullscreenchange", handleFSChange);
-    return () =>
-      document.removeEventListener("fullscreenchange", handleFSChange);
+    document.addEventListener('fullscreenchange', handleFSChange);
+    return () => document.removeEventListener('fullscreenchange', handleFSChange);
   }, []);
 
   const loadData = async () => {
     setLoading(true);
-    setError("");
+    setError('');
     try {
-      const activeGroup = groupBy === "chart" ? chartTimeGroup : groupBy;
-      const res = await reportsApi.getSalesReport(
-        startDate,
-        endDate,
-        activeGroup,
-      );
+      const activeGroup = groupBy === 'chart' ? chartTimeGroup : groupBy;
+      const res = await reportsApi.getSalesReport(startDate, endDate, activeGroup);
       const items = Array.isArray(res) ? res : [];
-      setData(
-        items.map((item: any, idx: number) => {
-          const rev = Number(item.revenue || 0);
-          const disc = Number(item.discount || 0);
-          const vat = Number(item.vatAmount || 0);
-          const ret = Number(item.returnAmount || 0);
-          // Cột cuối mới tổng lại: Doanh thu thuần = Thành tiền - Chiết khấu - Tiền hàng trả + Thuế VAT
-          const net =
-            item.netRevenue !== undefined && item.netRevenue !== null
-              ? Number(item.netRevenue)
-              : Math.max(0, rev - disc - ret + vat);
+      let mappedItems = items.map((item: any, idx: number) => {
+        const rev = Number(item.revenue || 0);
+        const disc = Number(item.discount || 0);
+        const vat = Number(item.vatAmount || 0);
+        const ret = Number(item.returnAmount || 0);
+        // Cột cuối mới tổng lại: Doanh thu thuần = Thành tiền - Chiết khấu - Tiền hàng trả + Thuế VAT
+        const net = item.netRevenue !== undefined && item.netRevenue !== null
+          ? Number(item.netRevenue)
+          : Math.max(0, rev - disc - ret + vat);
 
-          return {
-            id: String(item.id || idx + 1),
-            dateOrName:
-              item.dateOrName ||
-              item.groupName ||
-              item.date ||
-              `Nhóm ${idx + 1}`,
-            salesOrderCount: Number(
-              item.salesOrderCount || item.ordersCount || 0,
-            ),
-            revenue: rev,
-            discount: disc,
-            vatAmount: vat,
-            returnOrderCount: Number(item.returnOrderCount || 0),
-            returnAmount: ret,
-            netRevenue: net,
-            orders: Array.isArray(item.orders) ? item.orders : [],
-          };
-        }),
-      );
+        return {
+          id: String(item.id || idx + 1),
+          dateOrName: item.dateOrName || item.groupName || item.date || `Nhóm ${idx + 1}`,
+          salesOrderCount: Number(item.salesOrderCount || item.ordersCount || 0),
+          revenue: rev,
+          discount: disc,
+          vatAmount: vat,
+          returnOrderCount: Number(item.returnOrderCount || 0),
+          returnAmount: ret,
+          netRevenue: net,
+          orders: Array.isArray(item.orders) ? [...item.orders] : [],
+        };
+      });
+
+      // Hợp nhất đơn hàng từ localStorage stored_outbound_orders nếu chưa có trên DB
+      try {
+        const rawLocal = localStorage.getItem('stored_outbound_orders');
+        if (rawLocal) {
+          const localList: any[] = JSON.parse(rawLocal);
+          if (Array.isArray(localList) && localList.length > 0) {
+            const existingOrderNos = new Set<string>();
+            mappedItems.forEach((grp) => {
+              (grp.orders || []).forEach((o: any) => {
+                if (o.orderNo) existingOrderNos.add(String(o.orderNo).trim().toUpperCase());
+              });
+            });
+
+            localList.forEach((lo) => {
+              const oNo = String(lo.orderNo || lo.orderCode || '').trim().toUpperCase();
+              const oType = String(lo.orderType || '').toLowerCase();
+              const isDisposal = oType === 'disposal' || oNo.startsWith('XH');
+              const isCancelled = ['ĐÃ HỦY', 'CANCELLED', 'HỦY'].includes(String(lo.status || '').toUpperCase());
+
+              if (isDisposal || isCancelled || (oNo && existingOrderNos.has(oNo))) {
+                return;
+              }
+
+              const oDateStr = parseAnyDateToLocalString(lo.orderDate || lo.createdAt);
+              if (startDate && oDateStr && oDateStr < startDate) return;
+              if (endDate && oDateStr && oDateStr > endDate) return;
+
+              let groupKey = oDateStr || 'Không xác định';
+              let groupLabel = oDateStr || 'Không xác định';
+
+              if (activeGroup === 'month') {
+                groupKey = oDateStr ? oDateStr.substring(0, 7) : 'Không xác định';
+                groupLabel = oDateStr ? `Tháng ${oDateStr.substring(5, 7)}/${oDateStr.substring(0, 4)}` : 'Không xác định';
+              } else if (activeGroup === 'year') {
+                groupKey = oDateStr ? oDateStr.substring(0, 4) : 'Không xác định';
+                groupLabel = oDateStr ? `Năm ${oDateStr.substring(0, 4)}` : 'Không xác định';
+              } else if (activeGroup === 'staff') {
+                groupKey = (lo.employeeName || '').trim() || 'NV Chưa rõ';
+                groupLabel = groupKey;
+              } else if (activeGroup === 'customer') {
+                groupKey = (lo.customerName || lo.customer || '').trim() || 'Khách lẻ / vãng lai';
+                groupLabel = groupKey;
+              } else if (activeGroup === 'branch') {
+                groupKey = (lo.branchCode || lo.warehouseCode || 'KHO-TONG').trim().toUpperCase();
+                groupLabel = groupKey;
+              }
+
+              const subtotal = Number(lo.subtotal || lo.totalAmount || 0);
+              const disc = Number(lo.discount || 0);
+              const vat = Number(lo.vatAmount || 0);
+              const net = Math.max(0, subtotal - disc + vat);
+
+              let foundGroup = mappedItems.find((g) => g.id === groupKey || g.dateOrName === groupLabel);
+              if (!foundGroup) {
+                foundGroup = {
+                  id: groupKey,
+                  dateOrName: groupLabel,
+                  salesOrderCount: 0,
+                  revenue: 0,
+                  discount: 0,
+                  vatAmount: 0,
+                  returnOrderCount: 0,
+                  returnAmount: 0,
+                  netRevenue: 0,
+                  orders: [],
+                };
+                mappedItems.push(foundGroup);
+              }
+
+              foundGroup.salesOrderCount += 1;
+              foundGroup.revenue += subtotal;
+              foundGroup.discount += disc;
+              foundGroup.vatAmount += vat;
+              foundGroup.netRevenue += net;
+              foundGroup.orders.push({
+                id: lo.id || oNo,
+                orderNo: lo.orderNo || lo.orderCode,
+                orderDate: lo.orderDate || lo.createdAt,
+                customerName: lo.customerName || lo.customer || 'Khách hàng bán lẻ',
+                employeeName: lo.employeeName || 'System Administrator',
+                subtotal,
+                discount: disc,
+                vatAmount: vat,
+                totalAmount: Number(lo.totalAmount || (subtotal - disc + vat)),
+                status: lo.status || 'Đã giao hàng',
+              });
+
+              if (oNo) existingOrderNos.add(oNo);
+            });
+          }
+        }
+      } catch (eLocal) {
+        console.warn('Lỗi đọc stored_outbound_orders:', eLocal);
+      }
+
+      setData(mappedItems);
     } catch (err: any) {
-      console.error("Không thể kết nối dữ liệu báo cáo bán hàng:", err);
-      setError(err?.message || "Không thể kết nối dữ liệu báo cáo bán hàng");
+      console.error('Không thể kết nối dữ liệu báo cáo bán hàng:', err);
+      setError(err?.message || 'Không thể kết nối dữ liệu báo cáo bán hàng');
       setData([]);
     } finally {
       setLoading(false);
@@ -281,6 +357,18 @@ export default function SalesReportPage() {
 
   useEffect(() => {
     loadData();
+  }, [startDate, endDate, groupBy, chartTimeGroup]);
+
+  useEffect(() => {
+    const handleOrderEvent = () => {
+      loadData();
+    };
+    window.addEventListener('outbound-order-created', handleOrderEvent);
+    window.addEventListener('storage', handleOrderEvent);
+    return () => {
+      window.removeEventListener('outbound-order-created', handleOrderEvent);
+      window.removeEventListener('storage', handleOrderEvent);
+    };
   }, [startDate, endDate, groupBy, chartTimeGroup]);
 
   // Filtered dataset for search
@@ -304,19 +392,10 @@ export default function SalesReportPage() {
         returnAmount: acc.returnAmount + (item.returnAmount || 0),
         netRevenue: 0,
       }),
-      {
-        orders: 0,
-        revenue: 0,
-        discount: 0,
-        vatAmount: 0,
-        returnOrders: 0,
-        returnAmount: 0,
-        netRevenue: 0,
-      },
+      { orders: 0, revenue: 0, discount: 0, vatAmount: 0, returnOrders: 0, returnAmount: 0, netRevenue: 0 }
     );
     // Cột cuối mới tổng lại: Doanh thu thuần = Thành tiền - Chiết khấu - Tiền hàng trả + Thuế VAT
-    sum.netRevenue =
-      sum.revenue - sum.discount - sum.returnAmount + sum.vatAmount;
+    sum.netRevenue = sum.revenue - sum.discount - sum.returnAmount + sum.vatAmount;
     return sum;
   }, [filteredData]);
 
@@ -329,15 +408,7 @@ export default function SalesReportPage() {
   // FULL-BLEED EDGE-TO-EDGE DUAL Y-AXIS GRAPHIC
   const dualAxisData = useMemo(() => {
     const N = chartItems.length;
-    if (N === 0)
-      return {
-        maxOrders: 1,
-        maxRevenue: 1,
-        groups: [],
-        lineCoords: [],
-        linePathD: "",
-        areaPathD: "",
-      };
+    if (N === 0) return { maxOrders: 1, maxRevenue: 1, groups: [], lineCoords: [], linePathD: '', areaPathD: '' };
 
     // Keep both axes safely inside the SVG so the right-hand VNĐ labels are not clipped.
     const startX = 135;
@@ -348,10 +419,7 @@ export default function SalesReportPage() {
 
     const slotW = plotWidth / Math.max(N, 1);
 
-    const maxOrders = Math.max(
-      ...chartItems.map((d) => d.salesOrderCount || 0),
-      1,
-    );
+    const maxOrders = Math.max(...chartItems.map((d) => d.salesOrderCount || 0), 1);
     const maxRevenue = Math.max(...chartItems.map((d) => d.netRevenue || 0), 1);
 
     const groups = chartItems.map((item, i) => {
@@ -362,8 +430,7 @@ export default function SalesReportPage() {
       const revenueVal = item.netRevenue || 0;
 
       const hOrders = maxOrders > 0 ? (ordersVal / maxOrders) * plotHeight : 0;
-      const hRevenue =
-        maxRevenue > 0 ? (revenueVal / maxRevenue) * plotHeight : 0;
+      const hRevenue = maxRevenue > 0 ? (revenueVal / maxRevenue) * plotHeight : 0;
 
       // Prominent, thick bar pillars for high visibility across all date ticks
       const barW = Math.max(14, Math.min(slotW * 0.38, 28));
@@ -377,24 +444,8 @@ export default function SalesReportPage() {
         centerX,
         displayDate,
         bars: [
-          {
-            x: x1,
-            y: baselineY - hOrders,
-            w: barW,
-            h: hOrders,
-            val: ordersVal,
-            color: "#0891b2",
-            label: "Số đơn bán (Đơn)",
-          },
-          {
-            x: x2,
-            y: baselineY - hRevenue,
-            w: barW,
-            h: hRevenue,
-            val: revenueVal,
-            color: "#0284c7",
-            label: "Doanh thu thuần (VNĐ)",
-          },
+          { x: x1, y: baselineY - hOrders, w: barW, h: hOrders, val: ordersVal, color: '#0891b2', label: 'Số đơn bán (Đơn)' },
+          { x: x2, y: baselineY - hRevenue, w: barW, h: hRevenue, val: revenueVal, color: '#0284c7', label: 'Doanh thu thuần (VNĐ)' },
         ],
       };
     });
@@ -402,45 +453,25 @@ export default function SalesReportPage() {
     const lineCoords = chartItems.map((item, i) => {
       const val = item.netRevenue || 0;
       const x = startX + (N <= 1 ? plotWidth / 2 : (i / (N - 1)) * plotWidth);
-      const y =
-        baselineY - (maxRevenue > 0 ? (val / maxRevenue) * plotHeight : 0);
+      const y = baselineY - (maxRevenue > 0 ? (val / maxRevenue) * plotHeight : 0);
       const displayDate = formatSampleDate(item.dateOrName);
       return { x, y, val, item, displayDate };
     });
 
-    const linePathD = "M " + lineCoords.map((p) => `${p.x},${p.y}`).join(" L ");
+    const linePathD = 'M ' + lineCoords.map((p) => `${p.x},${p.y}`).join(' L ');
     const firstX = lineCoords.length > 0 ? lineCoords[0].x : startX;
-    const lastX =
-      lineCoords.length > 0 ? lineCoords[lineCoords.length - 1].x : endX;
+    const lastX = lineCoords.length > 0 ? lineCoords[lineCoords.length - 1].x : endX;
     const areaPathD = `${linePathD} L ${lastX},${baselineY} L ${firstX},${baselineY} Z`;
 
-    return {
-      maxOrders,
-      maxRevenue,
-      groups,
-      lineCoords,
-      linePathD,
-      areaPathD,
-      startX,
-      endX,
-    };
+    return { maxOrders, maxRevenue, groups, lineCoords, linePathD, areaPathD, startX, endX };
   }, [chartItems]);
 
   const handleExportExcel = () => {
     if (filteredData.length === 0) return;
-    const headers = [
-      "STT",
-      "Tiêu chí / Nhóm",
-      "Số đơn bán",
-      "Tổng tiền hàng",
-      "Chiết khấu",
-      "Thuế VAT",
-      "Tiền hàng trả",
-      "Doanh thu thuần",
-    ];
+    const headers = ['STT', 'Tiêu chí / Nhóm', 'Số đơn bán', 'Tổng tiền hàng', 'Chiết khấu', 'Thuế VAT', 'Tiền hàng trả', 'Doanh thu thuần'];
     const rows = filteredData.map((row, idx) => [
       idx + 1,
-      `"${(row.dateOrName || "").replace(/"/g, '""')}"`,
+      `"${(row.dateOrName || '').replace(/"/g, '""')}"`,
       row.salesOrderCount || 0,
       row.revenue || 0,
       row.discount || 0,
@@ -448,31 +479,13 @@ export default function SalesReportPage() {
       row.returnAmount || 0,
       row.netRevenue || 0,
     ]);
-    const summaryRow = [
-      "Tổng cộng",
-      "",
-      totals.orders,
-      totals.revenue,
-      totals.discount,
-      totals.vatAmount,
-      totals.returnAmount,
-      totals.netRevenue,
-    ];
-    const csvContent =
-      "\uFEFF" +
-      [
-        headers.join(","),
-        ...rows.map((r) => r.join(",")),
-        summaryRow.join(","),
-      ].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const summaryRow = ['Tổng cộng', '', totals.orders, totals.revenue, totals.discount, totals.vatAmount, totals.returnAmount, totals.netRevenue];
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(',')), summaryRow.join(',')].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute(
-      "download",
-      `Bao_Cao_Ban_Hang_${startDate}_den_${endDate}.csv`,
-    );
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Bao_Cao_Ban_Hang_${startDate}_den_${endDate}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -487,869 +500,678 @@ export default function SalesReportPage() {
         subtitle={
           startDate && endDate
             ? `Kỳ báo cáo: Từ ngày ${startDate} đến ngày ${endDate}`
-            : `Ngày lập: ${new Date().toLocaleDateString("vi-VN")}`
+            : `Ngày lập: ${new Date().toLocaleDateString('vi-VN')}`
         }
         subInfo={`Phân loại: ${
-          groupBy === "staff"
-            ? "Theo Nhân viên"
-            : groupBy === "customer"
-              ? "Theo Khách hàng"
-              : groupBy === "branch"
-                ? "Theo Kho xuất hàng"
-                : groupBy === "month"
-                  ? "Theo Tháng"
-                  : groupBy === "year"
-                    ? "Theo Năm"
-                    : "Theo Ngày"
+          groupBy === 'staff'
+            ? 'Theo Nhân viên'
+            : groupBy === 'customer'
+            ? 'Theo Khách hàng'
+            : groupBy === 'branch'
+            ? 'Theo Kho xuất hàng'
+            : groupBy === 'month'
+            ? 'Theo Tháng'
+            : groupBy === 'year'
+            ? 'Theo Năm'
+            : 'Theo Ngày'
         } | Tổng số nhóm: ${filteredData.length} nhóm`}
       />
 
       <div className="space-y-4 pb-12 animate-in fade-in duration-200">
         {/* ═══ TOP HEADER SECTION matching Outbound Orders Header ═══ */}
-        <div className="flex flex-col gap-3 sm:gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
-          {/* Left Badge Title */}
-          <div className="flex items-center gap-3">
-            <div className="inline-flex items-center gap-2 sm:gap-2.5 rounded-2xl bg-cyan-600 px-3.5 py-2 sm:px-5 sm:py-2.5 text-white shadow-md">
-              <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5" />
-              <h1 className="text-sm sm:text-xl font-extrabold tracking-tight uppercase">
-                BÁO CÁO BÁN HÀNG TỔNG HỢP
-              </h1>
-            </div>
-          </div>
-
-          {/* Right Action Buttons matching Outbound Orders Header buttons */}
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            {/* Làm mới */}
-            <button
-              type="button"
-              onClick={loadData}
-              disabled={loading}
-              className="inline-flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl border-2 border-cyan-700 bg-white px-3.5 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw
-                className={`h-4 w-4 sm:h-4.5 sm:w-4.5 text-cyan-700 ${loading ? "animate-spin" : ""}`}
-              />
-              <span>Làm mới</span>
-            </button>
-
-            {/* In báo cáo */}
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className="inline-flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl border-2 border-cyan-700 bg-white px-3.5 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-            >
-              <Printer className="h-4 w-4 sm:h-4.5 sm:w-4.5 text-cyan-700" />
-              <span>In báo cáo</span>
-            </button>
-
-            {/* Export Excel */}
-            <button
-              type="button"
-              onClick={handleExportExcel}
-              className="inline-flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl border-2 border-cyan-700 bg-white px-3.5 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-            >
-              <FileSpreadsheet className="h-4 w-4 sm:h-4.5 sm:w-4.5 text-cyan-700" />
-              <span>Export Excel</span>
-            </button>
-
-            {/* Settings Config Columns */}
-            <button
-              type="button"
-              onClick={() => setShowColumnSettings(true)}
-              className="inline-flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl border-2 border-cyan-700 bg-white px-3.5 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-              title="Cấu hình hiển thị cột"
-            >
-              <Settings className="h-4 w-4 sm:h-4.5 sm:w-4.5 text-cyan-700" />
-              <span>Hiển thị</span>
-            </button>
-
-            {/* Toàn màn hình */}
-            <button
-              type="button"
-              onClick={toggleBrowserFullscreen}
-              className="inline-flex items-center justify-center h-9 sm:h-11 w-9 sm:w-11 rounded-xl border-2 border-slate-300 bg-white text-slate-700 shadow-xs transition hover:bg-slate-50 active:scale-95 cursor-pointer"
-              title={isFullScreen ? "Thu nhỏ cửa sổ" : "Phóng to toàn màn hình"}
-            >
-              {isFullScreen ? (
-                <Minimize2 className="h-4 w-4 sm:h-4.5 sm:w-4.5" />
-              ) : (
-                <Maximize2 className="h-4 w-4 sm:h-4.5 sm:w-4.5" />
-              )}
-            </button>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
+        {/* Left Badge Title */}
+        <div className="flex items-center gap-3">
+          <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
+            <BarChart3 className="h-5 w-5" />
+            <h1 className="text-xl font-extrabold tracking-tight uppercase">BÁO CÁO BÁN HÀNG TỔNG HỢP</h1>
           </div>
         </div>
 
-        {/* ═══ FILTER & SEARCH PANEL ═══ */}
-        <div className="rounded-2xl border-2 border-slate-200 bg-white p-3 sm:p-4 shadow-sm space-y-3 print:hidden">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            {/* Live Search input */}
-            <div className="relative flex-1 min-w-[260px]">
-              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        {/* Right Action Buttons matching Outbound Orders Header buttons */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Làm mới */}
+          <button
+            type="button"
+            onClick={loadData}
+            disabled={loading}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4.5 w-4.5 text-cyan-700 ${loading ? 'animate-spin' : ''}`} />
+            Làm mới
+          </button>
+
+          {/* In báo cáo */}
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+          >
+            <Printer className="h-4.5 w-4.5 text-cyan-700" />
+            In báo cáo
+          </button>
+
+          {/* Export Excel */}
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+          >
+            <FileSpreadsheet className="h-4.5 w-4.5 text-cyan-700" />
+            Export Excel
+          </button>
+
+          {/* Hiển thị */}
+          <button
+            type="button"
+            onClick={() => setShowColumnSettings(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            title="Cấu hình hiển thị cột"
+          >
+            <Settings className="h-4.5 w-4.5 text-cyan-700" />
+            <span>Hiển thị</span>
+          </button>
+
+          {/* Toàn màn hình */}
+          <button
+            type="button"
+            onClick={toggleBrowserFullscreen}
+            className="inline-flex items-center justify-center h-10 w-10 rounded-xl border-2 border-cyan-700 bg-white text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            title="Toàn màn hình"
+          >
+            {isFullScreen ? <Minimize2 className="h-4.5 w-4.5 text-cyan-700" /> : <Maximize2 className="h-4.5 w-4.5 text-cyan-700" />}
+          </button>
+        </div>
+      </div>
+
+      {/* ═══ FILTER & SEARCH PANEL ═══ */}
+      <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm space-y-3 print:hidden">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          {/* Live Search input */}
+          <div className="relative flex-1 min-w-[300px]">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="h-12 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-4 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-2xs"
+              placeholder="Tìm theo mã nhóm, tên nhân viên, khách hàng, kho..."
+            />
+          </div>
+
+          {/* Date Filter Box */}
+          <div className="inline-flex h-12 items-center gap-3 rounded-xl border border-slate-300 bg-slate-50 px-3.5 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4.5 w-4.5 text-slate-600 shrink-0" />
+              <span className="text-xs font-extrabold uppercase text-slate-800 tracking-wide">Thời gian:</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-bold text-slate-600">Từ</span>
               <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="h-10 sm:h-12 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-3 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-2xs"
-                placeholder="Tìm theo mã nhóm, tên nhân viên, khách hàng, kho..."
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
               />
-            </div>
-
-            {/* Date Filter Box */}
-            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-300 bg-slate-50 p-2 sm:px-3.5 sm:h-12 shadow-2xs w-full sm:w-auto">
-              <div className="flex items-center gap-1.5">
-                <Calendar className="h-4 w-4 text-slate-600 shrink-0" />
-                <span className="text-[11px] sm:text-xs font-extrabold uppercase text-slate-800">
-                  Thời gian:
-                </span>
-              </div>
-              <div className="flex items-center gap-1 flex-1 sm:flex-initial">
-                <span className="text-xs font-bold text-slate-500">Từ</span>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="h-8 sm:h-9 flex-1 sm:flex-initial rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600"
-                />
-              </div>
-              <div className="flex items-center gap-1 flex-1 sm:flex-initial">
-                <span className="text-xs font-bold text-slate-500">Đến</span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="h-8 sm:h-9 flex-1 sm:flex-initial rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* ═══ INTERACTIVE PROMINENT GROUP-BY TABS ═══ */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-slate-100">
-            <div className="flex items-center gap-1.5 shrink-0">
-              <Filter className="h-3.5 w-3.5 text-cyan-600" />
-              <span className="text-[11px] sm:text-xs font-extrabold text-slate-700 uppercase tracking-wide">
-                Xem theo:
-              </span>
-            </div>
-
-            <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-none no-scrollbar flex-nowrap py-1 max-w-full">
-              {[
-                { id: "day", label: "Theo Ngày", icon: Calendar },
-                { id: "month", label: "Theo Tháng", icon: Calendar },
-                { id: "year", label: "Theo Năm", icon: Calendar },
-                { id: "staff", label: "Theo Nhân viên", icon: UserCheck },
-                { id: "customer", label: "Theo Khách hàng", icon: Users },
-                { id: "branch", label: "Theo Kho", icon: Building2 },
-                { id: "chart", label: "Biểu đồ", icon: BarChart3 },
-              ].map((opt) => {
-                const IconComp = opt.icon;
-                const isActive = groupBy === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setGroupBy(opt.id as any)}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition shrink-0 cursor-pointer ${
-                      isActive
-                        ? "bg-cyan-600 text-white shadow-md border-2 border-cyan-600"
-                        : "bg-slate-50 text-cyan-950 hover:bg-cyan-50 hover:text-cyan-900 border-2 border-slate-200"
-                    }`}
-                  >
-                    <IconComp size={13} />
-                    <span>{opt.label}</span>
-                  </button>
-                );
-              })}
+              <span className="text-xs font-bold text-slate-600">Đến</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="h-9 rounded-lg border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
+              />
             </div>
           </div>
         </div>
 
-        {error && (
-          <div className="rounded-xl border-2 border-rose-300 bg-rose-50 p-4 text-xs font-extrabold text-rose-700">
-            {error}
+        {/* ═══ INTERACTIVE PROMINENT GROUP-BY TABS ═══ */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-cyan-600" />
+            <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wide">Xem báo cáo theo:</span>
           </div>
-        )}
 
-        {/* ═══ VISUAL CHART MODE OR TABLE ═══ */}
-        {groupBy === "chart" ? (
-          <div className="rounded-2xl border-2 border-slate-200 bg-white p-6 shadow-sm space-y-6">
-            {/* Header Controls */}
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-200 pb-4 print:hidden">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-cyan-50 text-cyan-700 border border-cyan-200">
-                  <BarChart3 size={22} />
-                </div>
-                <div>
-                  <h2 className="text-base font-extrabold text-slate-900 uppercase">
-                    BIỂU ĐỒ PHÂN BỔ BÁN HÀNG
-                  </h2>
-                  <p className="text-xs text-slate-500 font-bold">
-                    Theo dõi số lượng đơn bán và doanh thu thuần (đ) qua thời
-                    gian
-                  </p>
-                </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {[
+              { id: 'day', label: 'Theo Ngày', icon: Calendar },
+              { id: 'month', label: 'Theo Tháng', icon: Calendar },
+              { id: 'year', label: 'Theo Năm', icon: Calendar },
+              { id: 'staff', label: 'Theo Nhân viên', icon: UserCheck },
+              { id: 'customer', label: 'Theo Khách hàng', icon: Users },
+              { id: 'branch', label: 'Theo Kho', icon: Building2 },
+              { id: 'chart', label: 'Biểu đồ', icon: BarChart3 },
+            ].map((opt) => {
+              const IconComp = opt.icon;
+              const isActive = groupBy === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setGroupBy(opt.id as any)}
+                  className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black transition cursor-pointer ${
+                    isActive
+                      ? 'bg-cyan-600 text-white shadow-md border-2 border-cyan-600'
+                      : 'bg-slate-50 text-cyan-950 hover:bg-cyan-50 hover:text-cyan-900 border-2 border-slate-200'
+                  }`}
+                >
+                  <IconComp size={14} />
+                  <span>{opt.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {error && (
+        <div className="rounded-xl border-2 border-rose-300 bg-rose-50 p-4 text-xs font-extrabold text-rose-700">
+          {error}
+        </div>
+      )}
+
+      {/* ═══ VISUAL CHART MODE OR TABLE ═══ */}
+      {groupBy === 'chart' ? (
+        <div className="rounded-2xl border-2 border-slate-200 bg-white p-6 shadow-sm space-y-6">
+          {/* Header Controls */}
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-200 pb-4 print:hidden">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-cyan-50 text-cyan-700 border border-cyan-200">
+                <BarChart3 size={22} />
               </div>
-
-              {/* Clean Legend for Dual Y-Axis */}
-              <div className="flex flex-wrap items-center gap-4 text-xs font-bold text-slate-700 bg-slate-50 px-4 py-2 rounded-xl border border-slate-200">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3.5 h-3.5 inline-block bg-[#0891b2]"></span>
-                  <span>Số đơn bán (Trục trái)</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3.5 h-3.5 inline-block bg-[#0284c7]"></span>
-                  <span>Doanh thu thuần (Trục phải)</span>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3">
-                {/* Chart Time Selector (Theo Ngày / Tháng / Năm) */}
-                <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
-                  <button
-                    type="button"
-                    onClick={() => setChartTimeGroup("day")}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer ${
-                      chartTimeGroup === "day"
-                        ? "bg-cyan-700 text-white shadow-xs"
-                        : "text-slate-700 hover:text-cyan-900"
-                    }`}
-                  >
-                    Theo Ngày
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setChartTimeGroup("month")}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer ${
-                      chartTimeGroup === "month"
-                        ? "bg-cyan-700 text-white shadow-xs"
-                        : "text-slate-700 hover:text-cyan-900"
-                    }`}
-                  >
-                    Theo Tháng
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setChartTimeGroup("year")}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer ${
-                      chartTimeGroup === "year"
-                        ? "bg-cyan-700 text-white shadow-xs"
-                        : "text-slate-700 hover:text-cyan-900"
-                    }`}
-                  >
-                    Theo Năm
-                  </button>
-                </div>
-
-                {/* Chart Type Selector */}
-                <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
-                  <button
-                    type="button"
-                    onClick={() => setChartType("bar")}
-                    className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer ${
-                      chartType === "bar"
-                        ? "bg-cyan-600 text-white shadow-xs"
-                        : "text-slate-700 hover:text-cyan-800"
-                    }`}
-                  >
-                    <BarChart2 size={14} />
-                    <span>Biểu đồ cột</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setChartType("line")}
-                    className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer ${
-                      chartType === "line"
-                        ? "bg-cyan-600 text-white shadow-xs"
-                        : "text-slate-700 hover:text-cyan-800"
-                    }`}
-                  >
-                    <TrendingUp size={14} />
-                    <span>Biểu đồ đường</span>
-                  </button>
-                </div>
+              <div>
+                <h2 className="text-base font-extrabold text-slate-900 uppercase">
+                  BIỂU ĐỒ PHÂN BỔ BÁN HÀNG
+                </h2>
+                <p className="text-xs text-slate-500 font-bold">
+                  Theo dõi số lượng đơn bán và doanh thu thuần (đ) qua thời gian
+                </p>
               </div>
             </div>
 
-            {/* SVG DUAL Y-AXIS GRAPHIC: FULL-BLEED EDGE-TO-EDGE WITH PRESERVEASPECTRATIO="NONE" */}
-            {chartItems.length === 0 ? (
-              <div className="py-20 text-center text-slate-400 font-bold text-xs">
-                Không có dữ liệu để hiển thị biểu đồ
+            {/* Clean Legend for Dual Y-Axis */}
+            <div className="flex flex-wrap items-center gap-4 text-xs font-bold text-slate-700 bg-slate-50 px-4 py-2 rounded-xl border border-slate-200">
+              <div className="flex items-center gap-1.5">
+                <span className="w-3.5 h-3.5 inline-block bg-[#0891b2]"></span>
+                <span>Số đơn bán (Trục trái)</span>
               </div>
-            ) : (
-              <div className="relative w-full overflow-hidden">
-                <div className="w-full h-[480px] relative">
-                  <svg
-                    viewBox="0 0 1500 440"
-                    preserveAspectRatio="none"
-                    className="w-full h-full"
-                  >
-                    <defs>
-                      <linearGradient
-                        id="cyanAreaGradient"
-                        x1="0"
-                        y1="0"
-                        x2="0"
-                        y2="1"
-                      >
-                        <stop
-                          offset="0%"
-                          stopColor="#0891b2"
-                          stopOpacity="0.35"
-                        />
-                        <stop
-                          offset="100%"
-                          stopColor="#0891b2"
-                          stopOpacity="0.0"
-                        />
-                      </linearGradient>
-                      <filter
-                        id="glow"
-                        x="-20%"
-                        y="-20%"
-                        width="140%"
-                        height="140%"
-                      >
-                        <feGaussianBlur stdDeviation="3" result="blur" />
-                        <feComposite
-                          in="SourceGraphic"
-                          in2="blur"
-                          operator="over"
-                        />
-                      </filter>
-                    </defs>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3.5 h-3.5 inline-block bg-[#0284c7]"></span>
+                <span>Doanh thu thuần (Trục phải)</span>
+              </div>
+            </div>
 
-                    {/* Left & Right Y-Axis Outer Labels */}
-                    <text
-                      x="123"
-                      y="16"
-                      textAnchor="end"
-                      fontSize="11"
-                      fontWeight="800"
-                      fill="#0891b2"
-                    >
-                      (Đơn)
-                    </text>
-                    <text
-                      x="1377"
-                      y="16"
-                      textAnchor="start"
-                      fontSize="11"
-                      fontWeight="800"
-                      fill="#0284c7"
-                    >
-                      (VNĐ)
-                    </text>
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Chart Time Selector (Theo Ngày / Tháng / Năm) */}
+              <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setChartTimeGroup('day')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer ${
+                    chartTimeGroup === 'day' ? 'bg-cyan-700 text-white shadow-xs' : 'text-slate-700 hover:text-cyan-900'
+                  }`}
+                >
+                  Theo Ngày
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChartTimeGroup('month')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer ${
+                    chartTimeGroup === 'month' ? 'bg-cyan-700 text-white shadow-xs' : 'text-slate-700 hover:text-cyan-900'
+                  }`}
+                >
+                  Theo Tháng
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChartTimeGroup('year')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer ${
+                    chartTimeGroup === 'year' ? 'bg-cyan-700 text-white shadow-xs' : 'text-slate-700 hover:text-cyan-900'
+                  }`}
+                >
+                  Theo Năm
+                </button>
+              </div>
 
-                    {/* Horizontal Grid Lines with Dual Y-Axis Edge Labels */}
-                    {[0, 0.2, 0.4, 0.6, 0.8, 1].map((pct, idx) => {
-                      const yVal = 350 - pct * 320;
-                      const labelOrders = Math.round(
-                        pct * dualAxisData.maxOrders,
-                      );
-                      const labelRevenue = Math.round(
-                        pct * dualAxisData.maxRevenue,
-                      );
-                      return (
-                        <g key={idx}>
-                          <line
-                            x1="135"
-                            y1={yVal}
-                            x2="1350"
-                            y2={yVal}
-                            stroke="#e2e8f0"
-                            strokeWidth="1"
+              {/* Chart Type Selector */}
+              <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setChartType('bar')}
+                  className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer ${
+                    chartType === 'bar' ? 'bg-cyan-600 text-white shadow-xs' : 'text-slate-700 hover:text-cyan-800'
+                  }`}
+                >
+                  <BarChart2 size={14} />
+                  <span>Biểu đồ cột</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChartType('line')}
+                  className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer ${
+                    chartType === 'line' ? 'bg-cyan-600 text-white shadow-xs' : 'text-slate-700 hover:text-cyan-800'
+                  }`}
+                >
+                  <TrendingUp size={14} />
+                  <span>Biểu đồ đường</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* SVG DUAL Y-AXIS GRAPHIC: FULL-BLEED EDGE-TO-EDGE WITH PRESERVEASPECTRATIO="NONE" */}
+          {chartItems.length === 0 ? (
+            <div className="py-20 text-center text-slate-400 font-bold text-xs">
+              Không có dữ liệu để hiển thị biểu đồ
+            </div>
+          ) : (
+            <div className="relative w-full overflow-hidden">
+              <div className="w-full h-[480px] relative">
+                  <svg viewBox="0 0 1500 440" preserveAspectRatio="none" className="w-full h-full">
+                  <defs>
+                    <linearGradient id="cyanAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#0891b2" stopOpacity="0.35" />
+                      <stop offset="100%" stopColor="#0891b2" stopOpacity="0.0" />
+                    </linearGradient>
+                    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                      <feGaussianBlur stdDeviation="3" result="blur" />
+                      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                    </filter>
+                  </defs>
+
+                  {/* Left & Right Y-Axis Outer Labels */}
+                  <text x="123" y="16" textAnchor="end" fontSize="11" fontWeight="800" fill="#0891b2">
+                    (Đơn)
+                  </text>
+                  <text x="1377" y="16" textAnchor="start" fontSize="11" fontWeight="800" fill="#0284c7">
+                    (VNĐ)
+                  </text>
+
+                  {/* Horizontal Grid Lines with Dual Y-Axis Edge Labels */}
+                  {[0, 0.2, 0.4, 0.6, 0.8, 1].map((pct, idx) => {
+                    const yVal = 350 - pct * 320;
+                    const labelOrders = Math.round(pct * dualAxisData.maxOrders);
+                    const labelRevenue = Math.round(pct * dualAxisData.maxRevenue);
+                    return (
+                      <g key={idx}>
+                        <line
+                          x1="135"
+                          y1={yVal}
+                          x2="1350"
+                          y2={yVal}
+                          stroke="#e2e8f0"
+                          strokeWidth="1"
+                        />
+                        {/* Left Outer Y Axis Label: Order count */}
+                        <text
+                          x="123"
+                          y={yVal + 4}
+                          textAnchor="end"
+                          fontSize="11"
+                          fontWeight="700"
+                          fill="#0891b2"
+                        >
+                          {labelOrders}
+                        </text>
+                        {/* Right Outer Y Axis Label: Money amount */}
+                        <text
+                          x="1377"
+                          y={yVal + 4}
+                          textAnchor="start"
+                          fontSize="11"
+                          fontWeight="700"
+                          fill="#0284c7"
+                        >
+                          {fmt(labelRevenue)}
+                        </text>
+                      </g>
+                    );
+                  })}
+
+                  {/* X-axis baseline */}
+                  <line x1="135" y1="350" x2="1350" y2="350" stroke="#cbd5e1" strokeWidth="1.5" />
+
+                  {/* GROUPED SIDE-BY-SIDE BARS */}
+                  {chartType === 'bar' &&
+                    dualAxisData.groups.map((group, gIdx) => (
+                      <g
+                        key={gIdx}
+                        className="cursor-pointer"
+                        onMouseEnter={() => setHoveredPoint(group.item)}
+                        onMouseLeave={() => setHoveredPoint(null)}
+                      >
+                        {group.bars.map((bar, bIdx) => (
+                          <rect
+                            key={bIdx}
+                            x={bar.x}
+                            y={bar.y}
+                            width={bar.w}
+                            height={Math.max(bar.h, 0)}
+                            rx="0"
+                            fill={bar.color}
+                            className="transition-all duration-300 hover:opacity-80"
                           />
-                          {/* Left Outer Y Axis Label: Order count */}
-                          <text
-                            x="123"
-                            y={yVal + 4}
-                            textAnchor="end"
-                            fontSize="11"
-                            fontWeight="700"
-                            fill="#0891b2"
-                          >
-                            {labelOrders}
-                          </text>
-                          {/* Right Outer Y Axis Label: Money amount */}
-                          <text
-                            x="1377"
-                            y={yVal + 4}
-                            textAnchor="start"
-                            fontSize="11"
-                            fontWeight="700"
-                            fill="#0284c7"
-                          >
-                            {fmt(labelRevenue)}
-                          </text>
-                        </g>
-                      );
-                    })}
+                        ))}
+                        <line
+                          x1={group.centerX}
+                          y1="350"
+                          x2={group.centerX}
+                          y2="358"
+                          stroke="#94a3b8"
+                          strokeWidth="1.5"
+                        />
+                        <text
+                          x={group.centerX}
+                          y="378"
+                          textAnchor="middle"
+                          fontSize="11"
+                          fontWeight="700"
+                          fill="#334155"
+                        >
+                          {group.displayDate}
+                        </text>
+                      </g>
+                    ))}
 
-                    {/* X-axis baseline */}
-                    <line
-                      x1="135"
-                      y1="350"
-                      x2="1350"
-                      y2="350"
-                      stroke="#cbd5e1"
-                      strokeWidth="1.5"
-                    />
-
-                    {/* GROUPED SIDE-BY-SIDE BARS */}
-                    {chartType === "bar" &&
-                      dualAxisData.groups.map((group, gIdx) => (
+                  {/* LINE CHART RENDERING */}
+                  {chartType === 'line' && (
+                    <>
+                      <path d={dualAxisData.areaPathD} fill="url(#cyanAreaGradient)" />
+                      <path
+                        d={dualAxisData.linePathD}
+                        fill="none"
+                        stroke="#0891b2"
+                        strokeWidth="3.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        filter="url(#glow)"
+                      />
+                      {dualAxisData.lineCoords.map((p, i) => (
                         <g
-                          key={gIdx}
-                          className="cursor-pointer"
-                          onMouseEnter={() => setHoveredPoint(group.item)}
+                          key={i}
+                          className="cursor-pointer group"
+                          onMouseEnter={() => setHoveredPoint(p.item)}
                           onMouseLeave={() => setHoveredPoint(null)}
                         >
-                          {group.bars.map((bar, bIdx) => (
-                            <rect
-                              key={bIdx}
-                              x={bar.x}
-                              y={bar.y}
-                              width={bar.w}
-                              height={Math.max(bar.h, 0)}
-                              rx="0"
-                              fill={bar.color}
-                              className="transition-all duration-300 hover:opacity-80"
-                            />
-                          ))}
                           <line
-                            x1={group.centerX}
+                            x1={p.x}
                             y1="350"
-                            x2={group.centerX}
+                            x2={p.x}
                             y2="358"
                             stroke="#94a3b8"
                             strokeWidth="1.5"
                           />
+                          <circle
+                            cx={p.x}
+                            cy={p.y}
+                            r="5"
+                            fill="#ffffff"
+                            stroke="#0891b2"
+                            strokeWidth="3"
+                            className="transition-all duration-200 group-hover:r-7"
+                          />
                           <text
-                            x={group.centerX}
+                            x={p.x}
                             y="378"
                             textAnchor="middle"
                             fontSize="11"
                             fontWeight="700"
                             fill="#334155"
                           >
-                            {group.displayDate}
+                            {p.displayDate}
                           </text>
                         </g>
                       ))}
-
-                    {/* LINE CHART RENDERING */}
-                    {chartType === "line" && (
-                      <>
-                        <path
-                          d={dualAxisData.areaPathD}
-                          fill="url(#cyanAreaGradient)"
-                        />
-                        <path
-                          d={dualAxisData.linePathD}
-                          fill="none"
-                          stroke="#0891b2"
-                          strokeWidth="3.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          filter="url(#glow)"
-                        />
-                        {dualAxisData.lineCoords.map((p, i) => (
-                          <g
-                            key={i}
-                            className="cursor-pointer group"
-                            onMouseEnter={() => setHoveredPoint(p.item)}
-                            onMouseLeave={() => setHoveredPoint(null)}
-                          >
-                            <line
-                              x1={p.x}
-                              y1="350"
-                              x2={p.x}
-                              y2="358"
-                              stroke="#94a3b8"
-                              strokeWidth="1.5"
-                            />
-                            <circle
-                              cx={p.x}
-                              cy={p.y}
-                              r="5"
-                              fill="#ffffff"
-                              stroke="#0891b2"
-                              strokeWidth="3"
-                              className="transition-all duration-200 group-hover:r-7"
-                            />
-                            <text
-                              x={p.x}
-                              y="378"
-                              textAnchor="middle"
-                              fontSize="11"
-                              fontWeight="700"
-                              fill="#334155"
-                            >
-                              {p.displayDate}
-                            </text>
-                          </g>
-                        ))}
-                      </>
-                    )}
-                  </svg>
-
-                  {/* Floating Hover Tooltip Card */}
-                  {hoveredPoint && (
-                    <div className="absolute top-2 right-4 bg-slate-900/90 text-white p-3 rounded-xl shadow-xl text-xs font-bold space-y-1 animate-in fade-in backdrop-blur-xs border border-slate-700 z-30">
-                      <div className="text-cyan-400 font-extrabold uppercase">
-                        {hoveredPoint.dateOrName}
-                      </div>
-                      <div>
-                        Số Đơn Bán:{" "}
-                        <span className="text-[#38bdf8] font-black">
-                          {hoveredPoint.salesOrderCount} đơn
-                        </span>
-                      </div>
-                      <div>
-                        Doanh Thu Thuần:{" "}
-                        <span className="text-white font-black">
-                          {fmt(hoveredPoint.netRevenue)} đ
-                        </span>
-                      </div>
-                      <div>
-                        Tổng Tiền Hàng:{" "}
-                        <span className="text-slate-300">
-                          {fmt(hoveredPoint.revenue)} đ
-                        </span>
-                      </div>
-                      <div>
-                        Tiền Hàng Trả:{" "}
-                        <span className="text-emerald-400 font-black">
-                          {fmt(hoveredPoint.returnAmount)} đ
-                        </span>
-                      </div>
-                    </div>
+                    </>
                   )}
-                </div>
+                </svg>
+
+                {/* Floating Hover Tooltip Card */}
+                {hoveredPoint && (
+                  <div className="absolute top-2 right-4 bg-slate-900/90 text-white p-3 rounded-xl shadow-xl text-xs font-bold space-y-1 animate-in fade-in backdrop-blur-xs border border-slate-700 z-30">
+                    <div className="text-cyan-400 font-extrabold uppercase">{hoveredPoint.dateOrName}</div>
+                    <div>Số Đơn Bán: <span className="text-[#38bdf8] font-black">{hoveredPoint.salesOrderCount} đơn</span></div>
+                    <div>Doanh Thu Thuần: <span className="text-white font-black">{fmt(hoveredPoint.netRevenue)} đ</span></div>
+                    <div>Tổng Tiền Hàng: <span className="text-slate-300">{fmt(hoveredPoint.revenue)} đ</span></div>
+                    <div>Tiền Hàng Trả: <span className="text-emerald-400 font-black">{fmt(hoveredPoint.returnAmount)} đ</span></div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        ) : (
-          /* ═══ MAIN TABLE & PAGINATION ═══ */
-          <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
-            <div className="overflow-x-auto custom-scrollbar">
-              <table className="w-full min-w-[1100px] border-collapse text-left">
-                <thead className="bg-cyan-600 text-white sticky top-0 z-20 shadow-sm">
-                  <tr className="border-b-2 border-cyan-700 text-white font-extrabold uppercase text-xs sm:text-sm tracking-wider">
-                    <th className="w-14 min-w-[60px] border-r border-cyan-500/50 px-3 py-3.5 text-center">
-                      STT
+            </div>
+          )}
+        </div>
+      ) : (
+        /* ═══ MAIN TABLE & PAGINATION ═══ */
+        <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
+          <div className="overflow-x-auto custom-scrollbar">
+            <table className="w-full min-w-[1100px] border-collapse text-left">
+              <thead className="bg-cyan-600 text-white sticky top-0 z-20 shadow-sm">
+                <tr className="border-b-2 border-cyan-700 text-white font-extrabold uppercase text-xs sm:text-sm tracking-wider">
+                  <th className="w-14 min-w-[60px] border-r border-cyan-500/50 px-3 py-3.5 text-center">STT</th>
+                  {columnVis.groupName && (
+                    <th className="min-w-[220px] border-r border-cyan-500/50 px-4 py-3.5 text-center">
+                      {groupBy === 'staff'
+                        ? 'Nhân viên thực hiện'
+                        : groupBy === 'customer'
+                        ? 'Khách hàng'
+                        : groupBy === 'branch'
+                        ? 'Kho xuất hàng'
+                        : groupBy === 'month'
+                        ? 'Tháng ghi nhận'
+                        : groupBy === 'year'
+                        ? 'Năm ghi nhận'
+                        : 'Ngày ghi nhận'}
                     </th>
-                    {columnVis.groupName && (
-                      <th className="min-w-[220px] border-r border-cyan-500/50 px-4 py-3.5 text-center">
-                        {groupBy === "staff"
-                          ? "Nhân viên thực hiện"
-                          : groupBy === "customer"
-                            ? "Khách hàng"
-                            : groupBy === "branch"
-                              ? "Kho xuất hàng"
-                              : groupBy === "month"
-                                ? "Tháng ghi nhận"
-                                : groupBy === "year"
-                                  ? "Năm ghi nhận"
-                                  : "Ngày ghi nhận"}
-                      </th>
-                    )}
-                    {columnVis.ordersCount && (
-                      <th className="min-w-[140px] border-r border-cyan-500/50 px-3 py-3.5 text-center">
-                        Số đơn bán
-                      </th>
-                    )}
-                    {columnVis.revenue && (
-                      <th className="min-w-[160px] border-r border-cyan-500/50 px-3 py-3.5 text-center">
-                        Thành tiền (đ)
-                      </th>
-                    )}
-                    {columnVis.discount && (
-                      <th className="min-w-[140px] border-r border-cyan-500/50 px-3 py-3.5 text-center">
-                        Chiết khấu (đ)
-                      </th>
-                    )}
-                    {columnVis.vat && (
-                      <th className="min-w-[130px] border-r border-cyan-500/50 px-3 py-3.5 text-center">
-                        Thuế VAT (đ)
-                      </th>
-                    )}
-                    {columnVis.returnAmount && (
-                      <th className="min-w-[150px] border-r border-cyan-500/50 px-3 py-3.5 text-center">
-                        Tiền hàng trả (đ)
-                      </th>
-                    )}
-                    {columnVis.netRevenue && (
-                      <th className="min-w-[170px] px-4 py-3.5 text-center text-white font-black">
-                        Doanh thu thuần (đ)
-                      </th>
-                    )}
-                  </tr>
-                  {/* Summary Row inside Header */}
-                  <tr className="bg-slate-100 border-b-2 border-slate-300 font-black text-slate-900 text-xs sm:text-sm">
-                    <td
-                      colSpan={2}
-                      className="py-3 px-4 border-r border-slate-200 uppercase tracking-wide"
-                    >
-                      TỔNG CỘNG ({filteredData.length} nhóm):
+                  )}
+                  {columnVis.ordersCount && <th className="min-w-[140px] border-r border-cyan-500/50 px-3 py-3.5 text-center">Số đơn bán</th>}
+                  {columnVis.revenue && <th className="min-w-[160px] border-r border-cyan-500/50 px-3 py-3.5 text-center">Thành tiền (đ)</th>}
+                  {columnVis.discount && <th className="min-w-[140px] border-r border-cyan-500/50 px-3 py-3.5 text-center">Chiết khấu (đ)</th>}
+                  {columnVis.vat && <th className="min-w-[130px] border-r border-cyan-500/50 px-3 py-3.5 text-center">Thuế VAT (đ)</th>}
+                  {columnVis.returnAmount && <th className="min-w-[150px] border-r border-cyan-500/50 px-3 py-3.5 text-center">Tiền hàng trả (đ)</th>}
+                  {columnVis.netRevenue && <th className="min-w-[170px] px-4 py-3.5 text-center text-white font-black">Doanh thu thuần (đ)</th>}
+                </tr>
+                {/* Summary Row inside Header */}
+                <tr className="bg-slate-100 border-b-2 border-slate-300 font-black text-slate-900 text-xs sm:text-sm">
+                  <td colSpan={2} className="py-3 px-4 border-r border-slate-200 uppercase tracking-wide">
+                    TỔNG CỘNG ({filteredData.length} nhóm):
+                  </td>
+                  {columnVis.ordersCount && <td className="py-3 px-3 text-center border-r border-slate-200 text-slate-900">{totals.orders} đơn</td>}
+                  {columnVis.revenue && <td className="py-3 px-3 text-right border-r border-slate-200 text-slate-900">{fmt(totals.revenue)}</td>}
+                  {columnVis.discount && <td className="py-3 px-3 text-right border-r border-slate-200 text-slate-900">{fmt(totals.discount)}</td>}
+                  {columnVis.vat && <td className="py-3 px-3 text-right border-r border-slate-200 text-slate-900">{fmt(totals.vatAmount)}</td>}
+                  {columnVis.returnAmount && <td className="py-3 px-3 text-right border-r border-slate-200 text-slate-900">{fmt(totals.returnAmount)}</td>}
+                  {columnVis.netRevenue && <td className="py-3 px-4 text-right text-slate-900 text-sm font-black">{fmt(totals.netRevenue)}</td>}
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-slate-200 bg-white text-xs sm:text-sm font-medium text-slate-800">
+                {loading ? (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-slate-400 font-bold">
+                      <RefreshCw size={20} className="animate-spin inline-block mr-2 text-cyan-600" />
+                      Đang tổng hợp dữ liệu báo cáo bán hàng...
                     </td>
-                    {columnVis.ordersCount && (
-                      <td className="py-3 px-3 text-center border-r border-slate-200 text-slate-900">
-                        {totals.orders} đơn
-                      </td>
-                    )}
-                    {columnVis.revenue && (
-                      <td className="py-3 px-3 text-right border-r border-slate-200 text-slate-900">
-                        {fmt(totals.revenue)}
-                      </td>
-                    )}
-                    {columnVis.discount && (
-                      <td className="py-3 px-3 text-right border-r border-slate-200 text-slate-900">
-                        {fmt(totals.discount)}
-                      </td>
-                    )}
-                    {columnVis.vat && (
-                      <td className="py-3 px-3 text-right border-r border-slate-200 text-slate-900">
-                        {fmt(totals.vatAmount)}
-                      </td>
-                    )}
-                    {columnVis.returnAmount && (
-                      <td className="py-3 px-3 text-right border-r border-slate-200 text-slate-900">
-                        {fmt(totals.returnAmount)}
-                      </td>
-                    )}
-                    {columnVis.netRevenue && (
-                      <td className="py-3 px-4 text-right text-slate-900 text-sm font-black">
-                        {fmt(totals.netRevenue)}
-                      </td>
-                    )}
+                  </tr>
+                ) : paginatedData.length > 0 ? (
+                  paginatedData.map((row, idx) => {
+                    const realIndex = idx + 1;
+                    return (
+                      <tr key={row.id || idx} className="hover:bg-cyan-50/60 transition group">
+                        <td className="py-3.5 px-3 text-center border-r border-slate-200 font-semibold text-slate-600">
+                          {realIndex}
+                        </td>
+                        {columnVis.groupName && (
+                          <td className="py-3.5 px-4 text-left border-r border-slate-200 font-extrabold text-slate-900">
+                            {row.dateOrName}
+                          </td>
+                        )}
+                        {columnVis.ordersCount && (
+                          <td className="py-3.5 px-3 text-center border-r border-slate-200 font-bold text-slate-800">
+                            {row.salesOrderCount} đơn
+                          </td>
+                        )}
+                        {columnVis.revenue && (
+                          <td className="py-3.5 px-3 text-right border-r border-slate-200 font-bold text-slate-800">
+                            {fmt(row.revenue)}
+                          </td>
+                        )}
+                        {columnVis.discount && (
+                          <td className="py-3.5 px-3 text-right border-r border-slate-200 font-bold text-slate-600">
+                            {fmt(row.discount)}
+                          </td>
+                        )}
+                        {columnVis.vat && (
+                          <td className="py-3.5 px-3 text-right border-r border-slate-200 font-bold text-slate-600">
+                            {fmt(row.vatAmount)}
+                          </td>
+                        )}
+                        {columnVis.returnAmount && (
+                          <td className="py-3.5 px-3 text-right border-r border-slate-200 font-bold text-slate-600">
+                            {fmt(row.returnAmount)}
+                          </td>
+                        )}
+                        {columnVis.netRevenue && (
+                          <td className="py-3.5 px-4 text-right font-black text-cyan-900 text-sm">
+                            {fmt(row.netRevenue)} đ
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-slate-400 font-bold">
+                      Không tìm thấy dữ liệu báo cáo bán hàng
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Table Summary Footer */}
+          <div className="flex items-center justify-between px-4 py-3 bg-white border-t-2 border-slate-200 text-xs font-extrabold text-slate-700 print:hidden">
+            <span>Tổng cộng: {filteredData.length} nhóm</span>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ COLUMN VISIBILITY MODAL ═══ */}
+      {showColumnSettings && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs animate-in fade-in print:hidden">
+          <div className="w-full max-w-md rounded-2xl border-2 border-cyan-500 bg-white p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 className="font-extrabold text-cyan-900 text-sm flex items-center gap-2 uppercase">
+                <SlidersHorizontal size={16} /> Cấu hình hiển thị cột
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowColumnSettings(false)}
+                className="text-slate-400 hover:text-slate-700 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="space-y-2 text-xs font-bold text-slate-700">
+              {Object.entries({
+                groupName: 'Tiêu chí nhóm',
+                ordersCount: 'Số đơn bán',
+                revenue: 'Thành tiền',
+                discount: 'Chiết khấu',
+                vat: 'Thuế VAT',
+                returnAmount: 'Tiền hàng trả',
+                netRevenue: 'Doanh thu thuần',
+              }).map(([key, label]) => (
+                <label key={key} className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 cursor-pointer">
+                  <span>{label}</span>
+                  <input
+                    type="checkbox"
+                    checked={(columnVis as any)[key]}
+                    onChange={(e) => setColumnVis((prev) => ({ ...prev, [key]: e.target.checked }))}
+                    className="h-4 w-4 rounded accent-cyan-600 cursor-pointer"
+                  />
+                </label>
+              ))}
+            </div>
+            <div className="pt-2 text-right">
+              <button
+                type="button"
+                onClick={() => setShowColumnSettings(false)}
+                className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-extrabold text-xs transition cursor-pointer"
+              >
+                Hoàn tất
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ DETAIL MODAL FOR SELECTED GROUP ═══ */}
+      {selectedGroupDetail && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-4xl max-h-[85vh] rounded-2xl border-2 border-cyan-500 bg-white shadow-2xl flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between bg-cyan-600 px-5 py-3 text-white">
+              <div className="flex items-center gap-2 font-extrabold text-sm">
+                <BarChart3 size={18} />
+                <span>Chi tiết các đơn bán - {selectedGroupDetail.dateOrName} ({selectedGroupDetail.orders.length} đơn)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedGroupDetail(null)}
+                className="text-white hover:text-cyan-100 font-black text-base cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto flex-1 custom-scrollbar space-y-3">
+              <table className="w-full border-collapse text-xs text-left">
+                <thead className="bg-slate-100 text-slate-800 font-extrabold border-b border-slate-300 uppercase">
+                  <tr>
+                    <th className="p-2 text-center w-10">STT</th>
+                    <th className="p-2">Mã phiếu</th>
+                    <th className="p-2">Ngày đặt</th>
+                    <th className="p-2">Khách hàng</th>
+                    <th className="p-2">Nhân viên</th>
+                    <th className="p-2 text-right">Tổng tiền</th>
+                    <th className="p-2 text-center">Trạng thái</th>
                   </tr>
                 </thead>
-
-                <tbody className="divide-y divide-slate-200 bg-white text-xs sm:text-sm font-medium text-slate-800">
-                  {loading ? (
-                    <tr>
-                      <td
-                        colSpan={8}
-                        className="py-12 text-center text-slate-400 font-bold"
-                      >
-                        <RefreshCw
-                          size={20}
-                          className="animate-spin inline-block mr-2 text-cyan-600"
-                        />
-                        Đang tổng hợp dữ liệu báo cáo bán hàng...
+                <tbody className="divide-y divide-slate-200">
+                  {selectedGroupDetail.orders.map((o: any, idx: number) => (
+                    <tr key={o.id || idx} className="hover:bg-cyan-50/50">
+                      <td className="p-2 text-center font-bold text-slate-500">{idx + 1}</td>
+                      <td className="p-2 font-extrabold text-cyan-800">{o.orderNo || `HD${o.id}`}</td>
+                      <td className="p-2 text-slate-700 font-semibold">{(o.orderDate || o.createdAt || '').split('T')[0]}</td>
+                      <td className="p-2 font-bold text-slate-800">{o.customerName || 'Khách lẻ'}</td>
+                      <td className="p-2 text-slate-700">{o.employeeName || 'Quản trị'}</td>
+                      <td className="p-2 text-right font-extrabold text-slate-900">{fmt(o.totalAmount || o.subtotal || 0)} đ</td>
+                      <td className="p-2 text-center">
+                        <span className="px-2.5 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                          {o.status || 'Hoàn thành'}
+                        </span>
                       </td>
                     </tr>
-                  ) : paginatedData.length > 0 ? (
-                    paginatedData.map((row, idx) => {
-                      const realIndex = idx + 1;
-                      return (
-                        <tr
-                          key={row.id || idx}
-                          className="hover:bg-cyan-50/60 transition group"
-                        >
-                          <td className="py-3.5 px-3 text-center border-r border-slate-200 font-semibold text-slate-600">
-                            {realIndex}
-                          </td>
-                          {columnVis.groupName && (
-                            <td className="py-3.5 px-4 text-left border-r border-slate-200 font-extrabold text-slate-900">
-                              {row.dateOrName}
-                            </td>
-                          )}
-                          {columnVis.ordersCount && (
-                            <td className="py-3.5 px-3 text-center border-r border-slate-200 font-bold text-slate-800">
-                              {row.salesOrderCount} đơn
-                            </td>
-                          )}
-                          {columnVis.revenue && (
-                            <td className="py-3.5 px-3 text-right border-r border-slate-200 font-bold text-slate-800">
-                              {fmt(row.revenue)}
-                            </td>
-                          )}
-                          {columnVis.discount && (
-                            <td className="py-3.5 px-3 text-right border-r border-slate-200 font-bold text-slate-600">
-                              {fmt(row.discount)}
-                            </td>
-                          )}
-                          {columnVis.vat && (
-                            <td className="py-3.5 px-3 text-right border-r border-slate-200 font-bold text-slate-600">
-                              {fmt(row.vatAmount)}
-                            </td>
-                          )}
-                          {columnVis.returnAmount && (
-                            <td className="py-3.5 px-3 text-right border-r border-slate-200 font-bold text-slate-600">
-                              {fmt(row.returnAmount)}
-                            </td>
-                          )}
-                          {columnVis.netRevenue && (
-                            <td className="py-3.5 px-4 text-right font-black text-cyan-900 text-sm">
-                              {fmt(row.netRevenue)} đ
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })
-                  ) : (
-                    <tr>
-                      <td
-                        colSpan={8}
-                        className="py-12 text-center text-slate-400 font-bold"
-                      >
-                        Không tìm thấy dữ liệu báo cáo bán hàng
-                      </td>
-                    </tr>
-                  )}
+                  ))}
                 </tbody>
               </table>
             </div>
 
-            {/* Table Summary Footer */}
-            <div className="flex items-center justify-between px-4 py-3 bg-white border-t-2 border-slate-200 text-xs font-extrabold text-slate-700 print:hidden">
-              <span>Tổng cộng: {filteredData.length} nhóm</span>
+            <div className="p-3 bg-slate-50 border-t border-slate-200 text-right">
+              <button
+                type="button"
+                onClick={() => setSelectedGroupDetail(null)}
+                className="px-4 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-800 text-white font-extrabold text-xs transition cursor-pointer"
+              >
+                Đóng
+              </button>
             </div>
           </div>
-        )}
+        </div>
+      )}
+    </div>
 
-        {/* ═══ COLUMN VISIBILITY MODAL ═══ */}
-        {showColumnSettings && (
-          <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs animate-in fade-in print:hidden">
-            <div className="w-full max-w-md rounded-2xl border-2 border-cyan-500 bg-white p-5 shadow-2xl space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                <h3 className="font-extrabold text-cyan-900 text-sm flex items-center gap-2 uppercase">
-                  <SlidersHorizontal size={16} /> Cấu hình hiển thị cột
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => setShowColumnSettings(false)}
-                  className="text-slate-400 hover:text-slate-700 font-bold"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="space-y-2 text-xs font-bold text-slate-700">
-                {Object.entries({
-                  groupName: "Tiêu chí nhóm",
-                  ordersCount: "Số đơn bán",
-                  revenue: "Thành tiền",
-                  discount: "Chiết khấu",
-                  vat: "Thuế VAT",
-                  returnAmount: "Tiền hàng trả",
-                  netRevenue: "Doanh thu thuần",
-                }).map(([key, label]) => (
-                  <label
-                    key={key}
-                    className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 cursor-pointer"
-                  >
-                    <span>{label}</span>
-                    <input
-                      type="checkbox"
-                      checked={(columnVis as any)[key]}
-                      onChange={(e) =>
-                        setColumnVis((prev) => ({
-                          ...prev,
-                          [key]: e.target.checked,
-                        }))
-                      }
-                      className="h-4 w-4 rounded accent-cyan-600 cursor-pointer"
-                    />
-                  </label>
-                ))}
-              </div>
-              <div className="pt-2 text-right">
-                <button
-                  type="button"
-                  onClick={() => setShowColumnSettings(false)}
-                  className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-extrabold text-xs transition cursor-pointer"
-                >
-                  Hoàn tất
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ═══ DETAIL MODAL FOR SELECTED GROUP ═══ */}
-        {selectedGroupDetail && (
-          <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs animate-in fade-in">
-            <div className="w-full max-w-4xl max-h-[85vh] rounded-2xl border-2 border-cyan-500 bg-white shadow-2xl flex flex-col overflow-hidden">
-              <div className="flex items-center justify-between bg-cyan-600 px-5 py-3 text-white">
-                <div className="flex items-center gap-2 font-extrabold text-sm">
-                  <BarChart3 size={18} />
-                  <span>
-                    Chi tiết các đơn bán - {selectedGroupDetail.dateOrName} (
-                    {selectedGroupDetail.orders.length} đơn)
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSelectedGroupDetail(null)}
-                  className="text-white hover:text-cyan-100 font-black text-base cursor-pointer"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div className="p-4 overflow-y-auto flex-1 custom-scrollbar space-y-3">
-                <table className="w-full border-collapse text-xs text-left">
-                  <thead className="bg-slate-100 text-slate-800 font-extrabold border-b border-slate-300 uppercase">
-                    <tr>
-                      <th className="p-2 text-center w-10">STT</th>
-                      <th className="p-2">Mã phiếu</th>
-                      <th className="p-2">Ngày đặt</th>
-                      <th className="p-2">Khách hàng</th>
-                      <th className="p-2">Nhân viên</th>
-                      <th className="p-2 text-right">Tổng tiền</th>
-                      <th className="p-2 text-center">Trạng thái</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200">
-                    {selectedGroupDetail.orders.map((o: any, idx: number) => (
-                      <tr key={o.id || idx} className="hover:bg-cyan-50/50">
-                        <td className="p-2 text-center font-bold text-slate-500">
-                          {idx + 1}
-                        </td>
-                        <td className="p-2 font-extrabold text-cyan-800">
-                          {o.orderNo || `HD${o.id}`}
-                        </td>
-                        <td className="p-2 text-slate-700 font-semibold">
-                          {(o.orderDate || o.createdAt || "").split("T")[0]}
-                        </td>
-                        <td className="p-2 font-bold text-slate-800">
-                          {o.customerName || "Khách lẻ"}
-                        </td>
-                        <td className="p-2 text-slate-700">
-                          {o.employeeName || "Quản trị"}
-                        </td>
-                        <td className="p-2 text-right font-extrabold text-slate-900">
-                          {fmt(o.totalAmount || o.subtotal || 0)} đ
-                        </td>
-                        <td className="p-2 text-center">
-                          <span className="px-2.5 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                            {o.status || "Hoàn thành"}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="p-3 bg-slate-50 border-t border-slate-200 text-right">
-                <button
-                  type="button"
-                  onClick={() => setSelectedGroupDetail(null)}
-                  className="px-4 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-800 text-white font-extrabold text-xs transition cursor-pointer"
-                >
-                  Đóng
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ─── CHỮ KÝ BÁO CÁO KHI IN ─── */}
-      <ReportPrintFooter />
-    </>
-  );
+    {/* ─── CHỮ KÝ BÁO CÁO KHI IN ─── */}
+    <ReportPrintFooter />
+  </>
+);
 }
