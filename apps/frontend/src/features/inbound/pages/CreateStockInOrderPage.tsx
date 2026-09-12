@@ -2221,7 +2221,6 @@ export default function CreateStockInOrderPage({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showAiSlottingModal, setShowAiSlottingModal] = useState(false);
   const [aiSlottingTargetRowId, setAiSlottingTargetRowId] = useState<string | null>(null);
-  const [pendingSaveConfig, setPendingSaveConfig] = useState<{ isPrint: boolean; saveStatus: 'DRAFT' | 'READY' | 'COMPLETED' } | null>(null);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [printOrderData, setPrintOrderData] = useState<InboundReceiptOrder | null>(null);
 
@@ -3187,58 +3186,10 @@ export default function CreateStockInOrderPage({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showPrintModal, handleOpenPrintModal]);
 
-  const handleConfirmAiSlotting = (updatedRows: FormDetailRow[]) => {
-    setShowAiSlottingModal(false);
-
-    updateActiveTab((tab) => {
-      const updatedMap = new Map(updatedRows.map((r) => [r.rowId, r]));
-      const mergedDetails = tab.details.map((row) => {
-        if (updatedMap.has(row.rowId)) {
-          return updatedMap.get(row.rowId)!;
-        }
-        return row;
-      });
-
-      const hasEmptyRow = mergedDetails.some((r) => !r.productId && !r.productName?.trim());
-      if (!hasEmptyRow) {
-        mergedDetails.push(makeEmptyRow(mergedDetails.length + 1, tab.warehouseCode || 'KH006'));
-      }
-
-      return {
-        ...tab,
-        details: mergedDetails,
-      };
-    });
-
-    if (pendingSaveConfig) {
-      // Flow 1: Triggered from "Lưu/Hoàn thành phiếu nhập" button at bottom of page
-      const cfg = pendingSaveConfig;
-      setPendingSaveConfig(null);
-      setTimeout(() => {
-        handleSaveInboundOrder(cfg.isPrint, cfg.saveStatus, true);
-      }, 100);
-    } else {
-      // Flow 2: Triggered from individual item action button in table
-      setToast({ message: 'Đã Lưu cho sản phẩm trong danh sách!', type: 'success' });
-      setAiSlottingTargetRowId(null);
-    }
-  };
-
-  const handleSkipAiSlotting = () => {
-    setShowAiSlottingModal(false);
-    if (pendingSaveConfig) {
-      const cfg = pendingSaveConfig;
-      setPendingSaveConfig(null);
-      handleSaveInboundOrder(cfg.isPrint, cfg.saveStatus, true);
-    } else {
-      setAiSlottingTargetRowId(null);
-    }
-  };
-
   const handleSaveInboundOrder = async (
     isPrint = false,
     saveStatus: 'DRAFT' | 'READY' | 'COMPLETED' = 'COMPLETED',
-    bypassAi = false,
+    bypassAi = true,
     overrideRows?: FormDetailRow[],
     overrideSubWarehouses?: any[]
   ) => {
@@ -3278,12 +3229,6 @@ export default function CreateStockInOrderPage({
     }
 
     const currentValidItems = itemsWithProduct;
-
-    if (!bypassAi) {
-      setPendingSaveConfig({ isPrint, saveStatus });
-      setShowAiSlottingModal(true);
-      return;
-    }
 
     const safeNum = (v: any, max = 999999999999.99) => {
       const n = Number(v);
@@ -4864,12 +4809,8 @@ export default function CreateStockInOrderPage({
             stagedSubWarehouses: updatedSubWarehouses || t.stagedSubWarehouses,
           }));
           setShowAiSlottingModal(false);
-          setToast({ message: 'Đã cập nhật vị trí ô kệ cất hàng!', type: 'success' });
-          if (pendingSaveConfig) {
-            const cfg = pendingSaveConfig;
-            setPendingSaveConfig(null);
-            handleSaveInboundOrder(cfg.isPrint, cfg.saveStatus, true, updatedRows, updatedSubWarehouses);
-          }
+          setAiSlottingTargetRowId(null);
+          setToast({ message: 'Đã cập nhật vị trí ô kệ cất hàng vào phiếu!', type: 'success' });
         }}
       />
 

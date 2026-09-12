@@ -776,45 +776,41 @@ export function findProductStockAndBinsByZone(
     } catch { }
   }
 
-  // 3. Fallback autoBins lookup from CSDL / localStorage
+  // 4. Fallback autoBins lookup from CSDL / localStorage
   const autoBins = findStockBinForProduct(p.id, p.internalSku, p.name, whCode);
 
   // If no zone entries formed yet, fallback to active sub-warehouses where total system stock or autoBins are allocated
-  if (resultsMap.size === 0) {
+  if (discoveredBinsMap.size === 0) {
     const firstSub = subWarehouses[0] || { code: 'PK-A', name: 'Phân Khu A' };
     const totalSys = getProductWarehouseStock(p, whCode);
-    const binsSet = new Set<string>(autoBins.assignedBins || []);
+    const binsArray: string[] = autoBins.assignedBins || [];
 
     return [
       {
         zoneCode: firstSub.code || firstSub.id,
         zoneName: firstSub.name,
+        rackCode: '',
+        binCode: '',
+        fullBinCode: '',
         systemQty: totalSys,
-        locationBin: Array.from(binsSet).join(', '),
-        assignedBins: Array.from(binsSet),
+        locationBin: binsArray.join(', ') || 'Chưa xếp ô',
+        assignedBins: binsArray,
+        initialBinQty: totalSys,
       },
     ];
   }
 
-  // Ensure autoBins are also attached if missing
-  if (autoBins.assignedBins.length > 0) {
-    const firstRes = Array.from(resultsMap.values())[0];
-    if (firstRes) {
-      autoBins.assignedBins.forEach((b) => firstRes.binsSet.add(b));
-    }
-  }
-
-  return Array.from(resultsMap.values()).map((res) => {
-    const binsArray = Array.from(res.binsSet);
-    const effectiveSysQty = res.systemQty > 0 ? res.systemQty : getProductWarehouseStock(p, whCode);
-    return {
-      zoneCode: res.zoneCode,
-      zoneName: res.zoneName,
-      systemQty: effectiveSysQty,
-      locationBin: binsArray.join(', '),
-      assignedBins: binsArray,
-    };
-  });
+  return Array.from(discoveredBinsMap.values()).map((b) => ({
+    zoneCode: b.zoneCode,
+    zoneName: b.zoneName,
+    rackCode: b.rackCode,
+    binCode: b.binCode,
+    fullBinCode: b.fullBinCode,
+    systemQty: b.systemQty > 0 ? b.systemQty : getProductWarehouseStock(p, whCode),
+    locationBin: b.locationBin,
+    assignedBins: b.binCode ? [b.binCode] : [],
+    initialBinQty: b.initialBinQty,
+  }));
 }
 
 // ─── MAIN COMPONENT ────────────────────────────────────────────
@@ -1989,7 +1985,7 @@ export default function CreateStocktakeOrderPage({
                     const prodTotalSys = item.zones.reduce((sum, z) => sum + (z.systemQty || 0), 0);
                     const prodTotalCounted = item.zones.reduce((sum, z) => sum + Number(z.countedQty || 0), 0);
                     const prodTotalDiff = prodTotalCounted - prodTotalSys;
-                    const productRowSpan = zoneCount > 1 ? zoneCount + 1 : zoneCount;
+                    const productRowSpan = zoneCount;
 
                     return (
                       <React.Fragment key={item.product.id || `prod-${pIdx}`}>
@@ -2132,10 +2128,12 @@ export default function CreateStocktakeOrderPage({
                               </td>
                             </tr>
                           );
-                        });
+                        })}
+                      </React.Fragment>
+                    );
                   })
                 )}
-                      </tbody>
+              </tbody>
 
               {/* TABLE FOOTER SUMMARY ROW */ }
                     {

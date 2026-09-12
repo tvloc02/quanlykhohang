@@ -489,6 +489,13 @@ export interface BinCell {
   bayCode: string;
   maxWeight: number;
   freeVol: number;
+  // Physical dimensions per cell (cm) — used by AI Slotting for accurate capacity
+  cellLengthCm?: number;  // Default: 120cm
+  cellWidthCm?: number;   // Default: 80cm
+  cellHeightCm?: number;  // Default: 100cm
+  cellVolumeM3?: number;  // Calculated: L*W*H / 1_000_000 (default: 0.96m³)
+  currentWeightKg?: number;    // Total weight of goods currently stored (kg)
+  currentOccupancyPct?: number; // Current occupancy percentage (0-100)
   isOccupied?: boolean;
   stockQty?: number;
   productId?: string;
