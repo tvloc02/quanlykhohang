@@ -76,6 +76,14 @@ export interface ProductOption {
   salePrice?: number;
   price?: number;
   stock?: number;
+  weight?: number;
+  length?: number;
+  width?: number;
+  height?: number;
+  volume?: number;
+  volumetricWeight?: number;
+  tempRequirement?: string;
+  turnoverClass?: string;
 }
 
 export interface SupplierOption {
@@ -2374,6 +2382,14 @@ export default function CreateStockInOrderPage({
             salePrice: Number(p.retailPrice || p.salePrice || p.price || 0),
             price: Number(p.importPrice || p.purchasePrice || p.price || 0),
             stock: Number(p.stock || 0),
+            weight: Number(p.weight ?? 0),
+            length: Number(p.length ?? 0),
+            width: Number(p.width ?? 0),
+            height: Number(p.height ?? 0),
+            volume: Number(p.volume ?? 0),
+            volumetricWeight: Number(p.volumetricWeight ?? 0),
+            tempRequirement: p.tempRequirement || 'AMBIENT',
+            turnoverClass: p.turnoverClass || 'B',
           }));
           setProducts(filterOutDeletedProducts(normalized));
         }
@@ -2790,6 +2806,10 @@ export default function CreateStockInOrderPage({
       return;
     }
 
+    const pInfo = products.find(
+      (p) => String(p.id) === String(scanned.id) || (barcodeVal && p.internalSku?.toLowerCase() === barcodeVal.toLowerCase())
+    );
+
     // 2. Nếu chưa có, kiểm tra dòng trống có sẵn để điền vào
     const emptyRow = activeTab.details.find((r) => !r.productId && !r.productName);
     if (emptyRow) {
@@ -2801,6 +2821,12 @@ export default function CreateStockInOrderPage({
         price: priceVal,
         qty: 1,
         totalAmount: priceVal,
+        weight: Number(pInfo?.weight ?? (scanned as any)?.weight ?? 0),
+        length: Number(pInfo?.length ?? (scanned as any)?.length ?? 0),
+        width: Number(pInfo?.width ?? (scanned as any)?.width ?? 0),
+        height: Number(pInfo?.height ?? (scanned as any)?.height ?? 0),
+        volume: Number(pInfo?.volume ?? (scanned as any)?.volume ?? 0),
+        volumetricWeight: Number(pInfo?.volumetricWeight ?? (scanned as any)?.volumetricWeight ?? 0),
       });
     } else {
       // 3. Thêm dòng mới vào bảng
@@ -2812,6 +2838,12 @@ export default function CreateStockInOrderPage({
       newRow.price = priceVal;
       newRow.qty = 1;
       newRow.totalAmount = priceVal;
+      newRow.weight = Number(pInfo?.weight ?? (scanned as any)?.weight ?? 0);
+      newRow.length = Number(pInfo?.length ?? (scanned as any)?.length ?? 0);
+      newRow.width = Number(pInfo?.width ?? (scanned as any)?.width ?? 0);
+      newRow.height = Number(pInfo?.height ?? (scanned as any)?.height ?? 0);
+      newRow.volume = Number(pInfo?.volume ?? (scanned as any)?.volume ?? 0);
+      newRow.volumetricWeight = Number(pInfo?.volumetricWeight ?? (scanned as any)?.volumetricWeight ?? 0);
 
       updateActiveTab((tab) => ({ ...tab, details: [...tab.details, newRow] }));
     }
@@ -4247,6 +4279,12 @@ export default function CreateStockInOrderPage({
                                           unit: p.unit || 'Cái',
                                           price: p.purchasePrice || p.salePrice || p.price || 0,
                                           qty: row.qty === 0 ? 1 : row.qty,
+                                          weight: Number(p.weight ?? 0),
+                                          length: Number(p.length ?? 0),
+                                          width: Number(p.width ?? 0),
+                                          height: Number(p.height ?? 0),
+                                          volume: Number(p.volume ?? 0),
+                                          volumetricWeight: Number(p.volumetricWeight ?? 0),
                                         });
                                         setActiveProductDropdownRowId(null);
                                       }}

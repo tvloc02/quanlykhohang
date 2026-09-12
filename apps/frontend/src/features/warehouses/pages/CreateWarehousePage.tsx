@@ -926,6 +926,9 @@ export default function CreateWarehousePage() {
         const nextShelves = fields.shelvesPerRack !== undefined ? fields.shelvesPerRack : (z.shelvesPerRack ?? 5);
         const nextBinsPerShelf = fields.binsPerShelf !== undefined ? fields.binsPerShelf : (z.binsPerShelf ?? 2);
         const nextMaxWeight = fields.maxWeightPerBin !== undefined ? fields.maxWeightPerBin : (z.maxWeightPerBin ?? 500);
+        const nextCellLength = fields.cellLength !== undefined ? fields.cellLength : (z.cellLength ?? 120);
+        const nextCellWidth = fields.cellWidth !== undefined ? fields.cellWidth : (z.cellWidth ?? 80);
+        const nextCellHeight = fields.cellHeight !== undefined ? fields.cellHeight : (z.cellHeight ?? 100);
 
         const updatedRacks = generateDefaultRacks(
           nextRacksCount,
@@ -945,7 +948,10 @@ export default function CreateWarehousePage() {
             id: existing?.id || r.id,
             rackCode: existing?.rackCode || r.rackCode,
             name: existing?.name || r.name,
-            defaultBinMaxWeight: existing?.defaultBinMaxWeight ?? nextMaxWeight,
+            defaultBinLength: fields.cellLength !== undefined ? fields.cellLength : (existing?.defaultBinLength ?? nextCellLength),
+            defaultBinWidth: fields.cellWidth !== undefined ? fields.cellWidth : (existing?.defaultBinWidth ?? nextCellWidth),
+            defaultBinHeight: fields.cellHeight !== undefined ? fields.cellHeight : (existing?.defaultBinHeight ?? nextCellHeight),
+            defaultBinMaxWeight: fields.maxWeightPerBin !== undefined ? fields.maxWeightPerBin : (existing?.defaultBinMaxWeight ?? nextMaxWeight),
             maxRackLoad: existing?.maxRackLoad ?? r.maxRackLoad,
             customBins: existing?.customBins || {},
           };
@@ -964,6 +970,9 @@ export default function CreateWarehousePage() {
           shelvesPerRack: nextShelves,
           binsPerShelf: nextBinsPerShelf,
           maxWeightPerBin: nextMaxWeight,
+          cellLength: nextCellLength,
+          cellWidth: nextCellWidth,
+          cellHeight: nextCellHeight,
           racks: updatedRacks
         };
       })
@@ -1751,6 +1760,116 @@ export default function CreateWarehousePage() {
                           />
                         </div>
                       </div>
+                    </div>
+
+                    {/* SECTION D: CẤU HÌNH QUY CÁCH Ô CHỨA TIÊU CHUẨN (BIN SPECIFICATIONS & PRESETS) */}
+                    <div className="bg-gradient-to-br from-indigo-50/80 via-sky-50/60 to-cyan-50/80 dark:from-slate-900 dark:via-indigo-950/40 dark:to-slate-900 p-3 rounded-xl border border-indigo-200 dark:border-indigo-800/80 space-y-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-1.5">
+                        <span className="text-[11px] font-black text-indigo-900 dark:text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                          <Boxes className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                          4. QUY CÁCH Ô CHỨA TIÊU CHUẨN (BIN SPECIFICATIONS)
+                        </span>
+                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-700">
+                          Thể tích: {(((activeZone.cellLength ?? 120) * (activeZone.cellWidth ?? 80) * (activeZone.cellHeight ?? 100)) / 1_000_000).toFixed(3)} m³
+                        </span>
+                      </div>
+
+                      {/* QUICK PRESETS */}
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                          Chọn nhanh kích thước chuẩn (1 Chạm):
+                        </span>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                          <button
+                            type="button"
+                            disabled={hasActiveZoneGoods}
+                            onClick={() => updateActiveZone({ cellLength: 120, cellWidth: 80, cellHeight: 100, maxWeightPerBin: 500 })}
+                            className="px-2 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 hover:bg-indigo-50 dark:hover:bg-indigo-950 text-[10px] font-bold text-slate-700 dark:text-slate-200 transition text-left cursor-pointer disabled:opacity-50 shadow-2xs"
+                          >
+                            <div className="font-extrabold text-indigo-600 dark:text-indigo-400">📦 Euro Pallet</div>
+                            <div>120×80×100cm (500kg)</div>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={hasActiveZoneGoods}
+                            onClick={() => updateActiveZone({ cellLength: 120, cellWidth: 100, cellHeight: 120, maxWeightPerBin: 800 })}
+                            className="px-2 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 hover:bg-indigo-50 dark:hover:bg-indigo-950 text-[10px] font-bold text-slate-700 dark:text-slate-200 transition text-left cursor-pointer disabled:opacity-50 shadow-2xs"
+                          >
+                            <div className="font-extrabold text-indigo-600 dark:text-indigo-400">📦 Pallet Lớn</div>
+                            <div>120×100×120cm (800kg)</div>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={hasActiveZoneGoods}
+                            onClick={() => updateActiveZone({ cellLength: 100, cellWidth: 60, cellHeight: 80, maxWeightPerBin: 300 })}
+                            className="px-2 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 hover:bg-indigo-50 dark:hover:bg-indigo-950 text-[10px] font-bold text-slate-700 dark:text-slate-200 transition text-left cursor-pointer disabled:opacity-50 shadow-2xs"
+                          >
+                            <div className="font-extrabold text-indigo-600 dark:text-indigo-400">📦 Kệ Trung Tải</div>
+                            <div>100×60×80cm (300kg)</div>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={hasActiveZoneGoods}
+                            onClick={() => updateActiveZone({ cellLength: 60, cellWidth: 40, cellHeight: 50, maxWeightPerBin: 100 })}
+                            className="px-2 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 hover:bg-indigo-50 dark:hover:bg-indigo-950 text-[10px] font-bold text-slate-700 dark:text-slate-200 transition text-left cursor-pointer disabled:opacity-50 shadow-2xs"
+                          >
+                            <div className="font-extrabold text-indigo-600 dark:text-indigo-400">📦 Ô Nhỏ / Hộp</div>
+                            <div>60×40×50cm (100kg)</div>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* CUSTOM INPUTS */}
+                      <div className="grid grid-cols-4 gap-2 pt-1 border-t border-indigo-100 dark:border-indigo-900/50">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-300 mb-0.5">Dài Ô (cm)</label>
+                          <input
+                            type="number"
+                            min={10}
+                            disabled={hasActiveZoneGoods}
+                            value={activeZone.cellLength ?? 120}
+                            onChange={(e) => updateActiveZone({ cellLength: parseNumInput(e.target.value) })}
+                            className="w-full px-2 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 font-bold bg-white dark:bg-slate-900 text-center text-xs disabled:bg-slate-100 disabled:text-slate-400"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-300 mb-0.5">Rộng Ô (cm)</label>
+                          <input
+                            type="number"
+                            min={10}
+                            disabled={hasActiveZoneGoods}
+                            value={activeZone.cellWidth ?? 80}
+                            onChange={(e) => updateActiveZone({ cellWidth: parseNumInput(e.target.value) })}
+                            className="w-full px-2 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 font-bold bg-white dark:bg-slate-900 text-center text-xs disabled:bg-slate-100 disabled:text-slate-400"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-300 mb-0.5">Cao Ô (cm)</label>
+                          <input
+                            type="number"
+                            min={10}
+                            disabled={hasActiveZoneGoods}
+                            value={activeZone.cellHeight ?? 100}
+                            onChange={(e) => updateActiveZone({ cellHeight: parseNumInput(e.target.value) })}
+                            className="w-full px-2 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 font-bold bg-white dark:bg-slate-900 text-center text-xs disabled:bg-slate-100 disabled:text-slate-400"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-300 mb-0.5">Tải Max (kg)</label>
+                          <input
+                            type="number"
+                            min={1}
+                            disabled={hasActiveZoneGoods}
+                            value={activeZone.maxWeightPerBin ?? 500}
+                            onChange={(e) => updateActiveZone({ maxWeightPerBin: parseNumInput(e.target.value) })}
+                            className="w-full px-2 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 font-bold bg-white dark:bg-slate-900 text-center text-xs text-emerald-600 font-black disabled:bg-slate-100 disabled:text-slate-400"
+                          />
+                        </div>
+                      </div>
+
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 italic">
+                        💡 Kích thước và tải trọng này được AI Slotting dùng để tính toán sức chứa thực tế khi xếp hàng. Nếu lô hàng vượt quá thể tích hoặc tải trọng, hệ thống sẽ tự động san sang ô khác.
+                      </p>
                     </div>
                   </div>
                 </div>

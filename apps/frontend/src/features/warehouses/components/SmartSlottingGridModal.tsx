@@ -156,6 +156,7 @@ export interface BinAllocationResult {
   formattedBins: string[];
   binQtyMap: Record<string, number>;
   binPctMap: Record<string, number>;
+  unallocatedQty: number;
 }
 
 export const allocateBinsForInbound = (
@@ -176,7 +177,7 @@ export const allocateBinsForInbound = (
   binDimensionsMap?: Map<string, { lengthCm: number; widthCm: number; heightCm: number; maxWeightKg: number }>
 ): BinAllocationResult => {
   if (!rawBinCodes || rawBinCodes.length === 0) {
-    return { formattedBins: [], binQtyMap: {}, binPctMap: {} };
+    return { formattedBins: [], binQtyMap: {}, binPctMap: {}, unallocatedQty: targetQty };
   }
 
   const uniqueBins: string[] = [];
@@ -193,7 +194,7 @@ export const allocateBinsForInbound = (
 
   const totalBins = uniqueBins.length;
   if (totalBins === 0) {
-    return { formattedBins: [], binQtyMap: {}, binPctMap: {} };
+    return { formattedBins: [], binQtyMap: {}, binPctMap: {}, unallocatedQty: targetQty };
   }
 
   const binQtyMap: Record<string, number> = {};
@@ -295,7 +296,7 @@ export const allocateBinsForInbound = (
     return qty > 0 ? `${cleanB} (${pct}%) [${qty} cái]` : `${cleanB} (${pct}%)`;
   });
 
-  return { formattedBins, binQtyMap, binPctMap };
+  return { formattedBins, binQtyMap, binPctMap, unallocatedQty };
 };
 
 
@@ -349,6 +350,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
   const [messages, setMessages] = useState<AiChatMessage[]>([]);
   const [inputMsg, setInputMsg] = useState('');
   const initialSlottingCached = getCachedSmartSlotting(warehouseCode);
+  const [dbProducts, setDbProducts] = useState<any[]>([]);
   const [dbOccupiedBinsMap, setDbOccupiedBinsMap] = useState<Map<string, number>>(
     () => initialSlottingCached ? new Map(initialSlottingCached.occMap) : new Map()
   );
@@ -372,10 +374,12 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
   // Helper to extract physical weight & volume dimensions for any item/product
   const getProductMetricsForItem = useCallback((item: any) => {
     if (!item) return { weight: 1, volume: 0.005, length: 20, width: 15, height: 10 };
-    const prod = (products || []).find((p: any) =>
+    const allProdCandidates = [...(dbProducts || []), ...(products || [])];
+    const prod = allProdCandidates.find((p: any) =>
       (item.productId && (String(p.id) === String(item.productId) || String(p._id) === String(item.productId))) ||
       (item.productSku && (p.sku === item.productSku || p.internalSku === item.productSku)) ||
-      (item.productName && p.name === item.productName)
+      (item.sku && (p.sku === item.sku || p.internalSku === item.sku)) ||
+      (item.productName && p.name && p.name.trim().toLowerCase() === item.productName.trim().toLowerCase())
     ) || item;
 
     const pWeight = Math.max(0.1, Number(prod?.weight ?? (item as any)?.weight ?? 1.0));
@@ -398,7 +402,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
       width: pWidth,
       height: pH,
     };
-  }, [products]);
+  }, [products, dbProducts]);
 
   // Comprehensive check across all 6 data sources: BinCell, selectedBinsMap, dbOccupiedBinsMap, binProductsMap, findCachedBinInfo, customBins
   const isBinOccupiedOrUnavailableForInbound = useCallback((
@@ -559,17 +563,26 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         }
 
         // Parallel Fetch for instant loading
-        const [balRes, inRes, outRes] = await Promise.all([
+        const [balRes, inRes, outRes, prodRes] = await Promise.all([
           fetch(`${API_BASE_URL}/inventory/balances`, { headers }).catch(() => null),
           fetch(`${API_BASE_URL}/inbound/stock-in-orders`, { headers }).catch(() => null),
           fetch(`${API_BASE_URL}/outbounds`, { headers }).catch(() => null),
+          fetch(`${API_BASE_URL}/products`, { headers }).catch(() => null),
         ]);
 
-        const [balancesData, ordersData, outboundsData] = await Promise.all([
+        const [balancesData, ordersData, outboundsData, prodData] = await Promise.all([
           balRes && balRes.ok ? balRes.json().catch(() => []) : Promise.resolve([]),
           inRes && inRes.ok ? inRes.json().catch(() => []) : Promise.resolve([]),
           outRes && outRes.ok ? outRes.json().catch(() => []) : Promise.resolve([]),
+          prodRes && prodRes.ok ? prodRes.json().catch(() => []) : Promise.resolve([]),
         ]);
+
+        const loadedDbProducts: any[] = Array.isArray(prodData) ? prodData : prodData?.data || [];
+        if (isMounted && loadedDbProducts.length > 0) {
+          setDbProducts(loadedDbProducts);
+        }
+
+        const effectiveProducts = loadedDbProducts.length > 0 ? loadedDbProducts : products;
 
         // 1. Process physical inventory balances from CSDL
         const balances: any[] = Array.isArray(balancesData) ? balancesData : balancesData?.data || [];
@@ -585,7 +598,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             (lc && lc.toUpperCase().startsWith(targetWhUpper));
 
           if (lc && physical > 0 && belongsToWh) {
-            const pItem = (products || []).find(
+            const pItem = (effectiveProducts || []).find(
               (p) => String(p.id) === String(b.productId) || String(p.id) === String(b.product?.id)
             );
             const pId = String(pItem?.id || b.productId || b.product?.id || '');
@@ -607,7 +620,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           if (targetWhUpper && ordWhCode && ordWhCode !== targetWhUpper) return;
 
           (ord.details || ord.items || []).forEach((item: any) => {
-            const pItem = (products || []).find(
+            const pItem = (effectiveProducts || []).find(
               (p) => String(p.id) === String(item.productId) || String(p.id) === String(item.product?.id)
             );
             const pId = String(pItem?.id || item.productId || item.product?.id || '');
@@ -1415,55 +1428,27 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     );
   }
 
-  const currentItem = (validItems && validItems.length > 0)
-    ? (validItems.find((i) => i.rowId === activeRowId) || validItems[0])
-    : ((items && items.length > 0) ? (items.find((i) => i.rowId === activeRowId) || items[0]) : null);
-  const currentMetrics = getProductMetricsForItem(currentItem);
-  const activeProductRequirement = useMemo<ProductSlottingRequirement>(() => {
-    return calculateProductSlottingRequirement(
-      {
-        lengthCm: currentMetrics.length,
-        widthCm: currentMetrics.width,
-        heightCm: currentMetrics.height,
-        weightKg: currentMetrics.weight,
-        qty: Number(currentItem?.qty) || 1,
-      },
-      {
-        lengthCm: 120,
-        widthCm: 80,
-        heightCm: 100,
-        maxWeightKg: 500,
-      }
-    );
-  }, [currentItem, currentMetrics]);
-
-  const curMaxCap = activeProductRequirement.binMaxItems;
-  const requiredCount = activeProductRequirement.requiredBinsCount;
-  const currentSelectedBins = selectedBinsMap[currentItem?.rowId || ''] || [];
-
-  const binDimensionsMap = useMemo(() => {
-    const map = new Map<string, { lengthCm: number; widthCm: number; heightCm: number; maxWeightKg: number }>();
-    (racksTopology || []).forEach((rack) => {
-      (rack.floors || []).forEach((floor) => {
-        (floor.cells || []).forEach((cell) => {
-          const bCode = cell.binCode;
-          const clean = bCode.split('(')[0].trim();
-          const short = (clean.split('-').pop() || clean).toUpperCase();
-          const norm = normalizeBinKey(clean);
-          const dim = {
-            lengthCm: cell.cellLengthCm || 120,
-            widthCm: cell.cellWidthCm || 80,
-            heightCm: cell.cellHeightCm || 100,
-            maxWeightKg: cell.maxWeight || 500,
-          };
-          map.set(clean, dim);
-          map.set(short, dim);
-          if (norm) map.set(norm, dim);
-        });
+  const binDimensionsMap = new Map<string, { lengthCm: number; widthCm: number; heightCm: number; maxWeightKg: number }>();
+  (racksTopology || []).forEach((rack) => {
+    (rack.floors || []).forEach((floor) => {
+      (floor.cells || []).forEach((cell) => {
+        const bCode = cell.binCode;
+        const clean = bCode.split('(')[0].trim();
+        const short = (clean.split('-').pop() || clean).toUpperCase();
+        const norm = normalizeBinKey(clean);
+        const dim = {
+          lengthCm: cell.cellLengthCm || 120,
+          widthCm: cell.cellWidthCm || 80,
+          heightCm: cell.cellHeightCm || 100,
+          maxWeightKg: cell.maxWeight || 500,
+        };
+        binDimensionsMap.set(clean, dim);
+        binDimensionsMap.set(short, dim);
+        if (norm) binDimensionsMap.set(norm, dim);
       });
     });
-    return map;
-  }, [racksTopology]);
+  });
+
   const defaultRackFallback: RackStructure = {
     rackId: 'R01',
     rackName: 'Dãy Kệ R01',
@@ -1475,6 +1460,38 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
   const currentRack = (racksTopology && racksTopology.length > 0)
     ? (racksTopology.find((r) => r.rackId === activeRackId) || racksTopology[0])
     : defaultRackFallback;
+
+  const currentItem = (validItems && validItems.length > 0)
+    ? (validItems.find((i) => i.rowId === activeRowId) || validItems[0])
+    : ((items && items.length > 0) ? (items.find((i) => i.rowId === activeRowId) || items[0]) : null);
+  const currentMetrics = getProductMetricsForItem(currentItem);
+
+  // Standard bin spec from active rack topology cells
+  const activeRackSampleCell = currentRack?.floors?.[0]?.cells?.[0];
+  const stdBinL = activeRackSampleCell?.cellLengthCm || 120;
+  const stdBinW = activeRackSampleCell?.cellWidthCm || 80;
+  const stdBinH = activeRackSampleCell?.cellHeightCm || 100;
+  const stdBinMaxW = activeRackSampleCell?.maxWeight || 500;
+
+  const activeProductRequirement: ProductSlottingRequirement = calculateProductSlottingRequirement(
+    {
+      lengthCm: currentMetrics.length,
+      widthCm: currentMetrics.width,
+      heightCm: currentMetrics.height,
+      weightKg: currentMetrics.weight,
+      qty: Number(currentItem?.qty) || 1,
+    },
+    {
+      lengthCm: stdBinL,
+      widthCm: stdBinW,
+      heightCm: stdBinH,
+      maxWeightKg: stdBinMaxW,
+    }
+  );
+
+  const curMaxCap = activeProductRequirement.binMaxItems;
+  const requiredCount = activeProductRequirement.requiredBinsCount;
+  const currentSelectedBins = selectedBinsMap[currentItem?.rowId || ''] || [];
 
   const isBinMatchingItem = (cell: BinCell, targetItem?: SlottingItemRow | null): boolean => {
     if (!targetItem) return false;
@@ -1884,6 +1901,19 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           return { ...prev, [activeRowId]: outAlloc.formattedBins };
         }
 
+        const pMetrics = getProductMetricsForItem(activeItem);
+        const binDims = binDimensionsMap.get(cleanBinCode) || binDimensionsMap.get(normKey) || binDimensionsMap.get(shortCode);
+        if (binDims) {
+          const cap = computeBinPhysicalCapacity(
+            { lengthCm: binDims.lengthCm, widthCm: binDims.widthCm, heightCm: binDims.heightCm, maxWeightKg: binDims.maxWeightKg, currentWeightKg: 0, currentOccupancyPct: 0 },
+            { lengthCm: pMetrics.length, widthCm: pMetrics.width, heightCm: pMetrics.height, weightKg: pMetrics.weight }
+          );
+          if (!cap.itemFitsInBin || cap.maxItems <= 0) {
+            setWarningMessage(`⚠️ Kích thước (${pMetrics.length}×${pMetrics.width}×${pMetrics.height} cm) hoặc trọng lượng (${pMetrics.weight} kg) của sản phẩm vượt quá quy cách ô ${cleanBinCode} (${binDims.lengthCm}×${binDims.widthCm}×${binDims.heightCm} cm, tối đa ${binDims.maxWeightKg} kg)! Vui lòng chọn ô kệ có quy cách lớn hơn.`);
+            return prev;
+          }
+        }
+
         const filtered = currentListInState.filter((b) => !isMatch(b));
         const toAdd = cleanBinCode;
         updatedRawList = [...filtered, toAdd];
@@ -1895,7 +1925,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
       }
 
       const pMetrics = getProductMetricsForItem(activeItem);
-      const { formattedBins, binQtyMap, binPctMap } = allocateBinsForInbound(
+      const { formattedBins, binQtyMap, binPctMap, unallocatedQty } = allocateBinsForInbound(
         updatedRawList,
         targetQty,
         updatedRowManual,
@@ -1903,15 +1933,18 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         undefined,
         binDimensionsMap
       );
-      const req = calculateProductSlottingRequirement({
-        lengthCm: pMetrics.length,
-        widthCm: pMetrics.width,
-        heightCm: pMetrics.height,
-        weightKg: pMetrics.weight,
-        qty: targetQty,
-      });
-      if (updatedRawList.length > req.requiredBinsCount) {
-        setWarningMessage(`ℹ️ Lô hàng ${targetQty} ${activeItem?.unit || 'cái'} đã được chứa đủ 100% trong ${req.requiredBinsCount} ô kệ. Ô vừa chọn không cần phân bổ thêm hàng (nhận 0 cái).`);
+
+      if (unallocatedQty > 0) {
+        setWarningMessage(`⚠️ Các ô đã chọn đã đầy tải (100% dung tích/tải trọng). Còn dư ${unallocatedQty} ${activeItem?.unit || 'cái'} — Vui lòng bấm chọn thêm ô kệ khác để san tiếp số hàng còn lại!`);
+      } else {
+        const lastBin = updatedRawList[updatedRawList.length - 1];
+        const lastClean = lastBin ? lastBin.split('(')[0].trim() : '';
+        const lastQty = binQtyMap[lastClean] ?? binQtyMap[normalizeBinKey(lastClean)] ?? 0;
+        if (lastQty === 0 && targetQty > 0 && updatedRawList.length > 1) {
+          setWarningMessage(`ℹ️ Toàn bộ ${targetQty} ${activeItem?.unit || 'cái'} đã được chứa đủ trong các ô trước. Ô ${lastClean} hiện đang trống (0%).`);
+        } else {
+          setWarningMessage(null);
+        }
       }
       setAllocatedQtyMap((prevQty) => ({ ...prevQty, [activeRowId]: binQtyMap }));
 
@@ -2673,18 +2706,28 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
 
       batchUpdateSubWarehousesTopology(updates, removals);
 
+      if (remainingToFit > 0) {
+        setWarningMessage(`⚠️ Đã phân bổ tối đa vào ${chosenBinCodes.length} ô khả dụng nhưng vẫn còn thiếu chỗ cho ${remainingToFit} ${currentItem.unit || 'cái'}. Kho cần thêm ô trống!`);
+      } else {
+        setWarningMessage(null);
+      }
+
       const firstBin = chosenBinCodes[0].split('(')[0].trim();
       const matchRack = racksTopology.find((rk) => firstBin.includes(rk.rackId));
       if (matchRack) setActiveRackId(matchRack.rackId);
 
       const shortNames = formattedBins.map((b) => b.split('-').pop()).join(', ');
       const now = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+      const tierDesc = isHeavy ? 'Tầng A/B (Chịu tải)' : isLight ? 'Tầng C/D (Hàng nhẹ)' : 'Tầng B/C (Vừa)';
+      const spillNotice = formattedBins.length > 1
+        ? `\n- Do số lượng hàng (${targetQty} cái) vượt quá sức chứa thể tích hoặc tải trọng của 1 ô, AI đã tự động san sang ${formattedBins.length} ô (${shortNames}).`
+        : `\n- Toàn bộ lô hàng (${targetQty} cái) đã vừa vặn trong 1 ô ${shortNames}.`;
       setMessages((prev) => [
         ...prev,
         {
           id: `ai-${Date.now()}`,
           sender: 'ai',
-          text: `[AI TỰ ĐỘNG PHÂN BỔ VỊ TRÍ CHO "${currentItem.productName}"]:\n- Đã tính toán và chọn ${formattedBins.length} ô tối ưu: ${shortNames}.\n- Quy cách: Điền đầy 100% dung tích các ô trước, ô cuối cùng chứa phần dư.\n- Tầng khuyến nghị: ${activeProductRequirement.recommendedTiers}.`,
+          text: `[AI TỰ ĐỘNG PHÂN BỔ VỊ TRÍ CHO "${currentItem.productName}"]:\n- Đã kiểm tra thể tích (${iL}×${iW}×${iH} cm) & tải trọng (${iWeight} kg/cái) khớp với quy cách từng ô kệ.\n- Đã chọn ${formattedBins.length} ô: ${shortNames}.${spillNotice}\n- Tầng khuyến nghị: ${tierDesc}.`,
           time: now,
         },
       ]);
@@ -2761,7 +2804,9 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             candidateBins,
             itemQty,
             manualBinAllocations[activeRowId] || {},
-            pMetrics
+            pMetrics,
+            undefined,
+            binDimensionsMap
           );
           setAllocatedQtyMap((prevQty) => ({ ...prevQty, [activeRowId]: binQtyMap }));
           setSelectedBinsMap((prev) => ({ ...prev, [activeRowId]: formattedBins }));
@@ -2791,12 +2836,15 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
       };
 
       // Extract active product details for physical metrics (weight, dimensions, volume)
-      const activeProduct = (products || []).find((p: any) =>
-        (activeItem?.productId && (p.id === activeItem.productId || p._id === activeItem.productId)) ||
+      const allProdCandidates = [...(dbProducts || []), ...(products || [])];
+      const activeProduct = allProdCandidates.find((p: any) =>
+        (activeItem?.productId && (String(p.id) === String(activeItem.productId) || String(p._id) === String(activeItem.productId))) ||
         (activeItem?.productSku && (p.sku === activeItem.productSku || p.internalSku === activeItem.productSku)) ||
-        (activeItem?.productName && p.name === activeItem.productName)
+        ((activeItem as any)?.sku && (p.sku === (activeItem as any).sku || p.internalSku === (activeItem as any).sku)) ||
+        (activeItem?.productName && p.name && p.name.trim().toLowerCase() === activeItem.productName.trim().toLowerCase())
       ) || activeItem;
-      const pWeight = Number(activeProduct?.weight ?? (activeProduct as any)?.weight ?? 1.0);
+      const activeMetrics = getProductMetricsForItem(activeItem);
+      const pWeight = activeMetrics.weight;
       const totalWeight = pWeight * Number(activeItem?.qty || 1);
 
       // Operation intent analysis (LẤY HÀNG vs NHẬP HÀNG)
@@ -3288,6 +3336,13 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             (neededBins.length > 0 ? `- Đề xuất lấy từ: ${neededBins.join(', ')}.` : `- Hiện kho không còn hàng của sản phẩm này.`);
         } else {
           const pMet = getProductMetricsForItem(activeItem);
+          const activeRackSampleCell = currentRack?.floors?.[0]?.cells?.[0];
+          const rackBinL = activeRackSampleCell?.cellLengthCm || 120;
+          const rackBinW = activeRackSampleCell?.cellWidthCm || 80;
+          const rackBinH = activeRackSampleCell?.cellHeightCm || 100;
+          const rackBinMaxW = activeRackSampleCell?.maxWeight || 500;
+          const rackBinVolM3 = (rackBinL * rackBinW * rackBinH) / 1_000_000;
+
           const req = calculateProductSlottingRequirement(
             {
               lengthCm: pMet.length,
@@ -3297,16 +3352,16 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
               qty: itemQty,
             },
             {
-              lengthCm: 120,
-              widthCm: 80,
-              heightCm: 100,
-              maxWeightKg: 500,
+              lengthCm: rackBinL,
+              widthCm: rackBinW,
+              heightCm: rackBinH,
+              maxWeightKg: rackBinMaxW,
             }
           );
 
           const limitDesc = req.limitingFactor === 'weight'
-            ? 'Giới hạn tải trọng kệ tối đa 500 kg/ô'
-            : 'Giới hạn không gian ô 120×80×100 cm (0.96 m³)';
+            ? `Giới hạn tải trọng tối đa ${rackBinMaxW} kg/ô`
+            : `Giới hạn không gian ô ${rackBinL}×${rackBinW}×${rackBinH} cm (${rackBinVolM3.toFixed(2)} m³)`;
 
           // If user also asks to choose or wants recommendation, auto-select them
           if (lower.includes('chọn') || lower.includes('xếp') || lower.includes('đặt') || lower.includes('gợi ý') || lower.includes('tự động')) {
@@ -3317,14 +3372,14 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             `📦 Sản phẩm: ${activeItem?.productName || 'Hàng hóa'}\n` +
             `- Kích thước 1 kiện: ${req.itemLengthCm}×${req.itemWidthCm}×${req.itemHeightCm} cm | Trọng lượng: ${req.itemWeightKg} kg | Thể tích: ${(req.itemVolumeM3).toFixed(4)} m³.\n` +
             `- Đơn hàng: ${itemQty.toLocaleString('vi-VN')} ${activeItem?.unit || 'cái'} (Tổng khối lượng: ${req.totalWeightKg.toLocaleString('vi-VN')} kg | Tổng thể tích: ${req.totalVolumeM3.toFixed(3)} m³).\n\n` +
-            `🏢 Quy cách ô chứa chuẩn (120×80×100 cm - Tối đa 500 kg - Thể tích 0.96 m³):\n` +
+            `🏢 Quy cách ô chứa (${currentRack?.rackName || 'Dãy kệ'}: ${rackBinL}×${rackBinW}×${rackBinH} cm - Tối đa ${rackBinMaxW} kg - Thể tích ${rackBinVolM3.toFixed(2)} m³):\n` +
             `- Sức chứa tối đa 1 ô: ${req.binMaxItems.toLocaleString('vi-VN')} ${activeItem?.unit || 'cái'} (Đạt 100% dung tích ô - ${limitDesc}).\n` +
-            `- Số ô kệ cần thiết: ${req.requiredBinsCount} ô chứa.\n` +
+            `- Số ô kệ ước tính: ${req.requiredBinsCount} ô chứa.\n` +
             `  + ${req.fullBinsCount} ô điền đầy 100% (${req.binMaxItems} cái/ô).\n` +
-            (req.remainderQty > 0 ? `  + 1 ô chứa phần lẻ: ${req.remainderQty} cái (chiếm ${req.remainderOccupancyPct}% dung tích ô).\n` : `  + Toàn bộ lô hàng được xếp kín 100% vào các ô đầy.\n`) +
+            (req.remainderQty > 0 ? `  + 1 ô chứa phần dư san sang: ${req.remainderQty} cái (chiếm ${req.remainderOccupancyPct}% dung tích ô).\n` : `  + Toàn bộ lô hàng được xếp kín 100% vào các ô đầy.\n`) +
             `\n🏗️ Đề xuất vị trí tầng kệ an toàn: ${req.recommendedTiers}\n` +
             `💡 Lý do kết cấu: ${req.tierDescription}\n` +
-            `\n-> Trạng thái chọn hiện tại: ${currentSelectedBins.length}/${req.requiredBinsCount} ô đã chọn. Bạn không cần chỉnh sửa % thủ công, AI Slotting đã tính toán tự động 100% sức chứa vật lý!`;
+            `\n-> Hệ thống kiểm tra thể tích và khối lượng thực tế của từng ô kệ: Nếu vượt quá thể tích hoặc tải trọng, số hàng dư sẽ tự động san sang ô tiếp theo!`;
         }
       }
       // Helper to match cell short code (e.g. D1, D2, A1) with cell object
@@ -3339,7 +3394,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
       const binCodeMatch = userText.match(/\b[A-Za-z]\d{1,2}\b/i);
       const pctMatch = userText.match(/\b(\d{1,3})\s*%/);
       const qtyNumMatch = userText.match(/\b(\d{1,6})\s*(cái|sp|sản phẩm|thùng|bao|kg|lô)?\b/i);
-      const fractionMatch = userText.match(/1\/2|nửa|1\/3|2\/3|1\/4|3\/4|4\/5|đầy|trống/i);
+      const fractionMatch = userText.match(/1\/2|nửa|1\/3|2\/3|1\/4|3\/4|4\/5|100%|đầy 100%/i);
       const isCapacityCmd =
         pctMatch ||
         fractionMatch ||
@@ -3356,7 +3411,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             lower.includes('dư') ||
             lower.includes('kệ')));
 
-      if (isCapacityCmd) {
+      if (!aiReply && isCapacityCmd) {
         aiReply = `[THÔNG BÁO TỰ ĐỘNG HÓA AI SLOTTING]:\n` +
           `Hệ thống AI Slotting hiện đã tự động tính toán 100% thể tích và tải trọng tối đa cho từng ô chứa dựa trên kích thước thực (${activeProductRequirement.itemLengthCm}×${activeProductRequirement.itemWidthCm}×${activeProductRequirement.itemHeightCm}cm, ${activeProductRequirement.itemWeightKg}kg/cái).\n` +
           `- Bạn không cần chỉnh sửa thủ công % hay số lượng cho từng ô kệ.\n` +
@@ -3742,7 +3797,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
               </div>
             </div>
 
-            {/* AI Physical Capacity & Slotting Recommendation Banner */}
+            {/* AI Physical Capacity & Dynamic Slotting Banner */}
             {currentItem && mode !== 'OUTBOUND_TRANSFER' && (
               <div className="mb-3 p-3 rounded-2xl bg-gradient-to-r from-cyan-50/90 via-sky-50/80 to-indigo-50/90 dark:from-slate-900 dark:via-indigo-950/40 dark:to-slate-900 border border-cyan-200 dark:border-indigo-800/60 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
                 <div className="flex items-center gap-3 min-w-0">
@@ -3755,27 +3810,51 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                         {currentItem.productName || 'Sản phẩm'}
                       </span>
                       <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                        ({activeProductRequirement.itemLengthCm}×{activeProductRequirement.itemWidthCm}×{activeProductRequirement.itemHeightCm} cm, {activeProductRequirement.itemWeightKg} kg/đơn vị)
+                        ({currentMetrics.length}×{currentMetrics.width}×{currentMetrics.height} cm, {currentMetrics.weight} kg/đơn vị, {currentMetrics.volume.toFixed(4)} m³)
                       </span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-cyan-100 dark:bg-cyan-950 text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800">
-                        1 ô chứa max: {activeProductRequirement.binMaxItems} {currentItem.unit || 'cái'} (100%)
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-100 dark:bg-cyan-950 text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800">
+                        ⚡ Kiểm tra thể tích & tải trọng động theo ô kệ (San ô khi đầy)
                       </span>
                     </div>
                     <div className="flex items-center gap-3 text-[11px] text-slate-600 dark:text-slate-300 flex-wrap">
                       <span>
-                        📦 Đơn hàng: <strong className="text-cyan-700 dark:text-indigo-400 font-bold">{Number(currentItem.qty || 1).toLocaleString('vi-VN')} {currentItem.unit || 'cái'}</strong> (~{activeProductRequirement.totalWeightKg.toLocaleString('vi-VN')} kg, {activeProductRequirement.totalVolumeM3.toFixed(3)} m³)
-                      </span>
-                      <span>•</span>
-                      <span>
-                        🎯 Cần tối thiểu: <strong className="text-indigo-600 dark:text-indigo-400 font-black">{activeProductRequirement.requiredBinsCount} ô</strong>
-                        {activeProductRequirement.remainderQty > 0
-                          ? ` (${activeProductRequirement.fullBinsCount} ô 100% + 1 ô ${activeProductRequirement.remainderOccupancyPct}%)`
-                          : ' (100% đầy tất cả)'}
+                        📦 Lô hàng: <strong className="text-cyan-700 dark:text-indigo-400 font-bold">{Number(currentItem.qty || 1).toLocaleString('vi-VN')} {currentItem.unit || 'cái'}</strong> (~{(Number(currentItem.qty || 1) * currentMetrics.weight).toLocaleString('vi-VN')} kg, {(Number(currentItem.qty || 1) * currentMetrics.volume).toFixed(3)} m³)
                       </span>
                       <span>•</span>
                       <span className="text-emerald-600 dark:text-emerald-400 font-bold">
-                        🏗️ {activeProductRequirement.recommendedTiers}
+                        🏗️ {currentMetrics.weight >= 20 || (Number(currentItem.qty || 1) * currentMetrics.weight) >= 50
+                          ? 'Khuyến nghị Tầng A/B (Chịu tải)'
+                          : currentMetrics.weight < 5 && (Number(currentItem.qty || 1) * currentMetrics.weight) < 30
+                          ? 'Khuyến nghị Tầng C/D (Hàng nhẹ)'
+                          : 'Khuyến nghị Tầng B/C (Vừa tầm với)'}
                       </span>
+                      <span>•</span>
+                      {currentSelectedBins.length > 0 ? (
+                        (() => {
+                          const rowQtyMap = allocatedQtyMap[currentItem.rowId] || {};
+                          let totalAllocated = 0;
+                          currentSelectedBins.forEach((b) => {
+                            const c = b.split('(')[0].trim();
+                            totalAllocated += rowQtyMap[c] ?? rowQtyMap[normalizeBinKey(c)] ?? 0;
+                          });
+                          const targetQ = Number(currentItem.qty || 1);
+                          if (totalAllocated >= targetQ) {
+                            return (
+                              <span className="text-emerald-700 dark:text-emerald-300 font-black flex items-center gap-1">
+                                <CheckCircle2 className="h-3.5 w-3.5 inline" /> Đã xếp đủ {targetQ}/{targetQ} {currentItem.unit || 'cái'} vào {currentSelectedBins.length} ô
+                              </span>
+                            );
+                          } else {
+                            return (
+                              <span className="text-amber-700 dark:text-amber-300 font-black">
+                                ⚠️ Đã xếp {totalAllocated}/{targetQ} {currentItem.unit || 'cái'} ({currentSelectedBins.length} ô đầy) — Cần san thêm ô khác ({targetQ - totalAllocated} cái)
+                              </span>
+                            );
+                          }
+                        })()
+                      ) : (
+                        <span className="text-slate-500 italic">Chưa chọn ô kệ</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -3785,10 +3864,10 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                     type="button"
                     onClick={autoSlotCurrentItem}
                     className="ml-auto px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0"
-                    title="AI tự động tính toán và chọn ô tối ưu cho mặt hàng đang chọn"
+                    title="AI tự động tính toán thể tích và tải trọng từng ô để xếp hàng và tự san ô khi đầy"
                   >
                     <Sparkles className="h-3.5 w-3.5 text-yellow-300" />
-                    <span>AI Tự chọn {activeProductRequirement.requiredBinsCount} ô cho SP này</span>
+                    <span>AI Tự động xếp ô cho SP này</span>
                   </button>
                 )}
               </div>

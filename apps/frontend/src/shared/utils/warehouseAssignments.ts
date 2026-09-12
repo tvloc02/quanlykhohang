@@ -538,7 +538,11 @@ export function buildWarehouseRackTopology(
     zonePrefix: string,
     rackId: string,
     floorId: string,
-    cellsCount = 10
+    cellsCount = 10,
+    cellLCm = 120,
+    cellWCm = 80,
+    cellHCm = 100,
+    maxWeight = 500
   ): BinCell[] => {
     return Array.from({ length: cellsCount }).map((_, idx) => {
       const cellNum = (idx + 1).toString().padStart(2, '0');
@@ -564,12 +568,18 @@ export function buildWarehouseRackTopology(
         }
       }
 
+      const cellVolM3 = Number(((cellLCm * cellWCm * cellHCm) / 1_000_000).toFixed(4));
+
       return {
         binCode,
         cellCode: `Ô C${cellNum}`,
         bayCode: `Khoang B${Math.ceil((idx + 1) / 2).toString().padStart(2, '0')}`,
-        maxWeight: 500,
-        freeVol: 450,
+        maxWeight,
+        freeVol: Math.round(cellVolM3 * 1000),
+        cellLengthCm: cellLCm,
+        cellWidthCm: cellWCm,
+        cellHeightCm: cellHCm,
+        cellVolumeM3: cellVolM3,
         isOccupied,
         stockQty,
         productId,
@@ -597,6 +607,10 @@ export function buildWarehouseRackTopology(
         binsPerShelf?: number;
         length?: number;
         width?: number;
+        defaultBinLength?: number;
+        defaultBinWidth?: number;
+        defaultBinHeight?: number;
+        defaultBinMaxWeight?: number;
       }> = [];
 
       if (Array.isArray(sub.racks) && sub.racks.length > 0) {
@@ -613,6 +627,10 @@ export function buildWarehouseRackTopology(
               : sub.binsPerShelf || 10,
           length: rk.length || sub.rackLength || 18,
           width: rk.width || sub.rackWidth || 1.2,
+          defaultBinLength: rk.defaultBinLength || sub.cellLength || 120,
+          defaultBinWidth: rk.defaultBinWidth || sub.cellWidth || 80,
+          defaultBinHeight: rk.defaultBinHeight || sub.cellHeight || 100,
+          defaultBinMaxWeight: rk.defaultBinMaxWeight || sub.maxWeightPerBin || 500,
         }));
       } else {
         const racksCount = sub.racksCount && sub.racksCount > 0 ? sub.racksCount : 1;
@@ -625,6 +643,10 @@ export function buildWarehouseRackTopology(
             binsPerShelf: sub.binsPerShelf || 10,
             length: sub.rackLength || 18,
             width: sub.rackWidth || 1.2,
+            defaultBinLength: sub.cellLength || 120,
+            defaultBinWidth: sub.cellWidth || 80,
+            defaultBinHeight: sub.cellHeight || 100,
+            defaultBinMaxWeight: sub.maxWeightPerBin || 500,
           });
         }
       }
@@ -633,6 +655,10 @@ export function buildWarehouseRackTopology(
         const rId = rk.rackCode.toUpperCase();
         const numShelves = rk.shelvesCount || 4;
         const numBins = rk.binsPerShelf || 10;
+        const binL = rk.defaultBinLength || sub.cellLength || 120;
+        const binW = rk.defaultBinWidth || sub.cellWidth || 80;
+        const binH = rk.defaultBinHeight || sub.cellHeight || 100;
+        const maxW = rk.defaultBinMaxWeight || sub.maxWeightPerBin || 500;
 
         const floors = Array.from({ length: numShelves }).map((_, flIdx) => {
           const floorNum = numShelves - flIdx;
@@ -641,7 +667,7 @@ export function buildWarehouseRackTopology(
             floorId,
             floorName: `Tầng ${floorId}`,
             floorDesc: `Mâm kệ tầng ${floorNum}`,
-            cells: createFloorCells(zoneCode, rId, floorId, numBins),
+            cells: createFloorCells(zoneCode, rId, floorId, numBins, binL, binW, binH, maxW),
           };
         });
 
@@ -649,7 +675,7 @@ export function buildWarehouseRackTopology(
           rackId: rId,
           rackName: rk.name || `Dãy Kệ ${rId} (${zoneName})`,
           dimensions: `${rk.length || 18}m Dài × ${rk.width || 1.2}m Rộng`,
-          spec: `${numShelves} Tầng × ${numBins} Ô`,
+          spec: `${numShelves} Tầng × ${numBins} Ô (${binL}×${binW}×${binH}cm - ${maxW}kg)`,
           zoneName: `${zoneName} (${zoneTypeLabel})`,
           floors,
         });

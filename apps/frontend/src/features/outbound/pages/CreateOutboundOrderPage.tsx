@@ -63,6 +63,14 @@ export interface ProductOption {
   supplierId?: string;
   supplierName?: string;
   supplier?: any;
+  weight?: number;
+  length?: number;
+  width?: number;
+  height?: number;
+  volume?: number;
+  volumetricWeight?: number;
+  tempRequirement?: string;
+  turnoverClass?: string;
   stockBalances?: Array<{
     id?: string;
     locationCode: string;
@@ -833,6 +841,14 @@ export default function CreateOutboundOrderPage({
                 supplierId: p.supplierId || p.supplier?.id,
                 supplierName: p.supplierName || p.supplier?.name,
                 supplier: p.supplier,
+                weight: Number(p.weight || 0),
+                length: Number(p.length || 0),
+                width: Number(p.width || 0),
+                height: Number(p.height || 0),
+                volume: Number(p.volume || 0),
+                volumetricWeight: Number(p.volumetricWeight || 0),
+                tempRequirement: p.tempRequirement || '',
+                turnoverClass: p.turnoverClass || '',
                 stockBalances,
               };
             });
