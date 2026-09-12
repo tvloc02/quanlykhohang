@@ -64,6 +64,7 @@ export interface SmartSlottingGridModalProps<T extends SlottingItemRow = Slottin
   isOpen: boolean;
   onClose: () => void;
   mode?: 'INBOUND' | 'INBOUND_STOCKIN' | 'OUTBOUND_TRANSFER' | 'STOCKTAKE';
+  isDisposal?: boolean;
   warehouseCode: string;
   items: T[];
   targetRowId?: string | null;
@@ -339,6 +340,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
   isOpen,
   onClose,
   mode,
+  isDisposal = false,
   warehouseCode,
   items,
   targetRowId,
@@ -568,14 +570,16 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         }
 
         // Parallel Fetch for instant loading
-        const [balRes, inRes] = await Promise.all([
+        const [balRes, inRes, outRes] = await Promise.all([
           fetch(`${API_BASE_URL}/inventory/balances`, { headers }).catch(() => null),
           fetch(`${API_BASE_URL}/inbound/stock-in-orders`, { headers }).catch(() => null),
+          fetch(`${API_BASE_URL}/outbounds`, { headers }).catch(() => null),
         ]);
 
-        const [balancesData, ordersData] = await Promise.all([
+        const [balancesData, ordersData, outboundsData] = await Promise.all([
           balRes && balRes.ok ? balRes.json().catch(() => []) : Promise.resolve([]),
           inRes && inRes.ok ? inRes.json().catch(() => []) : Promise.resolve([]),
+          outRes && outRes.ok ? outRes.json().catch(() => []) : Promise.resolve([]),
         ]);
 
         // 1. Process physical inventory balances from CSDL
@@ -1376,9 +1380,11 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           sender: 'ai',
           text: readOnly
             ? `SƠ ĐỒ VỊ TRÍ Ô KỆ ĐÃ LƯU KHO (CHẾ ĐỘ XEM)\n\nMặt hàng: ${activeItem?.productName || 'Hàng hóa'} (Tổng số lượng: ${itemQty.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'})\n\nTrạng thái: Phiếu nhập kho đã được lưu vào hệ thống.\nVị trí các ô kệ đang lưu trữ hàng hóa:\n${binListStr}\n\nℹ️ Bạn đang ở Chế độ xem chi tiết. Vị trí các ô kệ đã lưu hiển thị màu xanh trên sơ đồ.`
-            : isOutbound
-              ? `CHỈ DẪN XUẤT CHUYỂN KHO AI SMART WMS\n\nMặt hàng: ${activeItem?.productName || 'Hàng hóa'} (Tổng xuất: ${itemQty.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'})\n\nQUY TẮC AN TOÀN XUẤT KHO:\n- Bạn chỉ được phép chọn các ô kệ đang lưu trữ đúng mặt hàng "${activeItem?.productName || 'này'}".\n- Các ô kệ trống hoặc chứa hàng khác sẽ tự động khóa để tránh xuất nhầm hàng.\n\nChỉ dẫn vị trí ô lấy hàng: Cần chọn ~${totalBinsNeeded} ô chứa.`
-              : `CHỈ DẪN NHẬP KHO AI SMART WMS\n\nMặt hàng: ${activeItem?.productName || 'Hàng hóa'} (Tổng nhập: ${itemQty.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'})\n\nChỉ dẫn: Bạn có thể tự do chọn ô kệ cho 1, 2, 3 mặt hàng tùy ý. Không bắt buộc chọn tất cả.`,
+            : isDisposal
+              ? `CHỈ DẪN XUẤT HỦY HÀNG HÓA (AI SMART WMS)\n\nMặt hàng: ${activeItem?.productName || 'Hàng hóa'} (Tổng xuất hủy: ${itemQty.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'})\n\nQUY TẮC XUẤT HỦY HÀNG:\n- Chọn kệ chứa hàng: Nhấp vào ô kệ đang chứa mặt hàng "${activeItem?.productName || 'này'}" để chọn ô lấy hủy.\n- Nhập số lượng: Nhập hoặc điều chỉnh số lượng xuất hủy cụ thể cho từng kệ.\n- Hệ thống không tự động chọn kệ sẵn để bạn hoàn toàn chủ động theo thực tế.\n\n💡 Bạn có thể hỏi AI:\n• "Lấy hàng ở đâu?" / "Kệ nào có hàng?"\n• "Tự động chọn ô cho tất cả sản phẩm" (khi cần AI hỗ trợ chọn tự động)`
+              : isOutbound
+                ? `CHỈ DẪN XUẤT CHUYỂN KHO AI SMART WMS\n\nMặt hàng: ${activeItem?.productName || 'Hàng hóa'} (Tổng xuất: ${itemQty.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'})\n\nQUY TẮC AN TOÀN XUẤT KHO:\n- Bạn chỉ được phép chọn các ô kệ đang lưu trữ đúng mặt hàng "${activeItem?.productName || 'này'}".\n- Các ô kệ trống hoặc chứa hàng khác sẽ tự động khóa để tránh xuất nhầm hàng.\n\nChỉ dẫn vị trí ô lấy hàng: Cần chọn ~${totalBinsNeeded} ô chứa.`
+                : `CHỈ DẪN NHẬP KHO AI SMART WMS\n\nMặt hàng: ${activeItem?.productName || 'Hàng hóa'} (Tổng nhập: ${itemQty.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'})\n\nChỉ dẫn: Bạn có thể tự do chọn ô kệ cho 1, 2, 3 mặt hàng tùy ý. Không bắt buộc chọn tất cả.`,
           time: now,
         },
       ];
@@ -2326,6 +2332,8 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
 
         const chosenCodes: string[] = [];
         let accumulatedStock = 0;
+        const binQtyMap: Record<string, number> = {};
+        let remainingNeeded = reqQty;
 
         for (const cl of matchingCells) {
           if (accumulatedStock >= reqQty) break;
@@ -2333,10 +2341,20 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           allocatedBinsInThisRun.add(cl.binCode.split('(')[0].trim());
           const stock = Number(cl.stockQty || (cl as any).totalPhysical || 1);
           accumulatedStock += stock;
+
+          const cleanB = cl.binCode.split('(')[0].trim();
+          const shortB = (cleanB.split('-').pop() || cleanB).toUpperCase();
+          const normB = normalizeBinKey(cleanB);
+          const takeQty = Math.min(remainingNeeded, Math.max(1, stock));
+          binQtyMap[cleanB] = takeQty;
+          binQtyMap[shortB] = takeQty;
+          if (normB) binQtyMap[normB] = takeQty;
+          remainingNeeded = Math.max(0, remainingNeeded - takeQty);
         }
 
         if (chosenCodes.length > 0) {
           newSelectedBinsMap[it.rowId] = chosenCodes;
+          newAllocatedQtyMap[it.rowId] = binQtyMap;
           const shortNames = chosenCodes.map((b) => b.split('-').pop()).join(', ');
           const isEnough = accumulatedStock >= reqQty;
           summaryLines.push(`• #${idx + 1} ${it.productName || 'Hàng hóa'}: Lấy từ ${chosenCodes.length} ô (${shortNames}) - Tồn: ${accumulatedStock}/${reqQty} ${it.unit || 'cái'} ${isEnough ? '✅' : '⚠️ (Thiếu hàng)'}`);
@@ -2919,7 +2937,21 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           if (!isOutbound) {
             setCandidateBinsForActiveItem(candidateBins);
           } else {
+            const binQtyMap: Record<string, number> = {};
+            let remainingNeeded = Number(activeItem?.qty || 1);
+            candidateBins.forEach((bCode) => {
+              const cleanB = bCode.split('(')[0].trim();
+              const shortB = (cleanB.split('-').pop() || cleanB).toUpperCase();
+              const normB = normalizeBinKey(cleanB);
+              const cellStock = dbOccupiedBinsMap.get(cleanB) ?? (normB ? dbOccupiedBinsMap.get(normB) : undefined) ?? (shortB ? dbOccupiedBinsMap.get(shortB) : undefined) ?? 999;
+              const takeQty = Math.min(remainingNeeded, Math.max(1, cellStock));
+              binQtyMap[cleanB] = takeQty;
+              binQtyMap[shortB] = takeQty;
+              if (normB) binQtyMap[normB] = takeQty;
+              remainingNeeded = Math.max(0, remainingNeeded - takeQty);
+            });
             setSelectedBinsMap((prev) => ({ ...prev, [activeRowId]: candidateBins }));
+            setAllocatedQtyMap((prev) => ({ ...prev, [activeRowId]: binQtyMap }));
           }
 
           const firstBin = candidateBins[0];
@@ -3171,11 +3203,23 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
               const combined = Array.from(new Set([...currentList.map((b) => b.split('(')[0].trim()), ...foundBins]));
               setCandidateBinsForActiveItem(combined);
             } else {
-              setSelectedBinsMap((prev) => {
-                const currentList = prev[activeRowId] || [];
-                const combined = Array.from(new Set([...currentList, ...foundBins]));
-                return { ...prev, [activeRowId]: combined };
+              const binQtyMap: Record<string, number> = {};
+              let remainingNeeded = Number(activeItem?.qty || 1);
+              const currentList = selectedBinsMap[activeRowId] || [];
+              const combined = Array.from(new Set([...currentList, ...foundBins]));
+              combined.forEach((bCode) => {
+                const cleanB = bCode.split('(')[0].trim();
+                const shortB = (cleanB.split('-').pop() || cleanB).toUpperCase();
+                const normB = normalizeBinKey(cleanB);
+                const cellStock = dbOccupiedBinsMap.get(cleanB) ?? (normB ? dbOccupiedBinsMap.get(normB) : undefined) ?? (shortB ? dbOccupiedBinsMap.get(shortB) : undefined) ?? 999;
+                const takeQty = Math.min(remainingNeeded, Math.max(1, cellStock));
+                binQtyMap[cleanB] = takeQty;
+                binQtyMap[shortB] = takeQty;
+                if (normB) binQtyMap[normB] = takeQty;
+                remainingNeeded = Math.max(0, remainingNeeded - takeQty);
               });
+              setSelectedBinsMap((prev) => ({ ...prev, [activeRowId]: combined }));
+              setAllocatedQtyMap((prev) => ({ ...prev, [activeRowId]: binQtyMap }));
             }
             aiReply = `Đã chọn các ô (${matchedShortCodes.join(', ')}) trên sơ đồ 2D cho mặt hàng "${activeItem?.productName}".`;
           } else {

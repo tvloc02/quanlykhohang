@@ -586,7 +586,10 @@ export default function CreateWarehousePage() {
               ...rk,
               customBins: {
                 ...(rk.customBins || {}),
-                [editingBinCode]: { ...binCustomForm },
+                [editingBinCode]: {
+                  ...(rk.customBins?.[editingBinCode] || {}),
+                  ...binCustomForm,
+                },
               },
             };
           }),
@@ -2019,12 +2022,12 @@ export default function CreateWarehousePage() {
                         }
                       }}
                       mode="view"
-                      onBinClick={(fullBinCode, customConfig, occupiedInfo, goodsList) => {
+                      onBinClick={async (fullBinCode, customConfig, occupiedInfo, goodsList) => {
                         setEditingBinCode(fullBinCode);
-                        const rawList = isEditMode ? (goodsList && goodsList.length > 0 ? goodsList : (occupiedInfo ? [occupiedInfo] : [])) : [];
+                        const rawList = isEditMode ? (goodsList && goodsList.length > 0 ? [...goodsList] : (occupiedInfo ? [{ ...occupiedInfo }] : [])) : [];
                         const normalizedList = rawList.map((item: any) => ({
                           ...item,
-                          quantity: Number(item.quantity || item.totalPhysical || item.qty || 1),
+                          quantity: Number(item.quantity !== undefined ? item.quantity : (item.totalPhysical || item.qty || 1)),
                         }));
 
                         setActiveBinGoodsDetails({
@@ -2043,6 +2046,151 @@ export default function CreateWarehousePage() {
                             maxWeight: 500,
                           }
                         );
+
+                        // Asynchronously query all real outbound & disposal transactions for this bin to guarantee full history
+                        try {
+                          const [outRes, obsRes] = await Promise.all([
+                            fetch(`${API_BASE_URL}/outbound/orders`).catch(() => null),
+                            fetch(`${API_BASE_URL}/outbounds`).catch(() => null),
+                          ]);
+                          const localOutStr = localStorage.getItem('stored_outbound_orders');
+                          const localOut = localOutStr ? JSON.parse(localOutStr) : [];
+                          const outList: any[] = [];
+                          if (outRes && outRes.ok) {
+                            const d = await outRes.json().catch(() => []);
+                            const arr = Array.isArray(d) ? d : d?.data || [];
+                            outList.push(...arr);
+                          }
+                          if (obsRes && obsRes.ok) {
+                            const d = await obsRes.json().catch(() => []);
+                            const arr = Array.isArray(d) ? d : d?.data || [];
+                            arr.forEach((o: any) => {
+                              if (!outList.some((x: any) => String(x.id) === String(o.id) || (x.orderNo && o.orderNo && x.orderNo === o.orderNo))) {
+                                outList.push(o);
+                              }
+                            });
+                          }
+                          if (Array.isArray(localOut)) {
+                            localOut.forEach((lo: any) => {
+                              if (!outList.some((x: any) => String(x.id) === String(lo.id) || (x.orderNo && lo.orderNo && x.orderNo === lo.orderNo))) {
+                                outList.push(lo);
+                              }
+                            });
+                          }
+
+                          const binParts = fullBinCode.split('-');
+                          const bShort = (binParts[binParts.length - 1] || fullBinCode).trim().toUpperCase();
+                          const rPart = binParts.length >= 2 ? binParts[binParts.length - 2].trim().toUpperCase() : '';
+                          const rCell = rPart ? `${rPart}-${bShort}` : '';
+                          const normFull = fullBinCode.replace(/[^A-Z0-9]/g, '').toUpperCase();
+                          const normRCell = rCell.replace(/[^A-Z0-9]/g, '').toUpperCase();
+
+                          const isOrderMatchWh = (ord: any) => {
+                            const c1 = String(ord.branchCode || ord.warehouseCode || ord.warehouse?.code || '').trim().toUpperCase();
+                            const c2 = String(ord.warehouseId || ord.warehouse?.id || '').trim().toLowerCase();
+                            const curC = String(code || '').trim().toUpperCase();
+                            const curId = String(id || '').trim().toLowerCase();
+                            if (curC && c1 && curC === c1) return true;
+                            if (curId && c2 && curId === c2) return true;
+                            return false;
+                          };
+
+                          const extraOutboundItems: any[] = [];
+
+                          outList.forEach((ord: any) => {
+                            if (!isOrderMatchWh(ord)) return;
+                            const details = Array.isArray(ord.details) ? ord.details : (Array.isArray(ord.items) ? ord.items : []);
+                            details.forEach((item: any) => {
+                              let rawBins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : [];
+                              if (rawBins.length === 0 && item.locationBin) rawBins = String(item.locationBin).split(',').map((s: string) => s.trim());
+                              if (rawBins.length === 0 && item.note) {
+                                const noteMatches = [...item.note.matchAll(/\[(?:Vị trí Ô|Vị trí|Ô):\s*([^\]]+)\]/gi)];
+                                noteMatches.forEach((m: any) => {
+                                  if (m[1]) rawBins.push(m[1].trim());
+                                });
+                              }
+
+                              const isMatched = rawBins.some((b: string) => {
+                                const clean = b.split('(')[0].trim().toUpperCase();
+                                const normClean = clean.replace(/[^A-Z0-9]/g, '');
+                                return clean === fullBinCode.toUpperCase() ||
+                                       clean === rCell.toUpperCase() ||
+                                       normClean === normFull ||
+                                       normClean === normRCell ||
+                                       (clean.startsWith(`${rPart}-`) && clean.endsWith(`-${bShort}`)) ||
+                                       clean.endsWith(`-${bShort}`);
+                              });
+
+                              if (isMatched) {
+                                const isDisposal = ord.orderType === 'disposal' || (ord.orderNo && (ord.orderNo.startsWith('PXH') || ord.orderNo.toUpperCase().includes('HUY') || ord.orderNo.toUpperCase().includes('HỦY')));
+                                const isTransfer = ord.orderType === 'transfer' || (ord.orderNo && (ord.orderNo.startsWith('CK') || ord.orderNo.startsWith('PCK')));
+                                const isRetail = ord.orderType === 'retail' || ord.orderType === 'RETAIL' || (ord.orderNo && ord.orderNo.startsWith('XBL'));
+                                const isReturn = ord.orderType === 'return-supplier' || ord.orderType === 'return' || (ord.orderNo && ord.orderNo.startsWith('XTR'));
+                                const orderCode = ord.orderNo || ord.orderCode || ord.code || (ord.id ? (isDisposal ? `PXH-${ord.id}` : isRetail ? `XBL-${ord.id}` : isTransfer ? `PCK-${ord.id}` : `PXK-${ord.id}`) : 'PXK-ORDER');
+                                const qtyNum = Math.abs(Number(item.qty || item.quantity || item.requiredQty || 1));
+                                const pName = item.productName || item.product?.name || 'Sản phẩm';
+                                const pSku = item.productSku || item.sku || item.product?.internalSku || item.product?.sku || 'SKU-001';
+                                const unit = item.unit || item.product?.unit || 'Cái';
+
+                                const matchPct = rawBins.map(b => b.match(/\((\d+(?:\.\d+)?)%\)/)).find(Boolean);
+                                const itemPct = matchPct ? Number(matchPct[1]) : (item.occupancyPct || undefined);
+
+                                const partner = isDisposal
+                                  ? (ord.description || 'Xuất hủy nội bộ')
+                                  : isTransfer
+                                  ? (ord.customerName || ord.receiver || 'Chuyển kho nội bộ')
+                                  : isReturn
+                                  ? (ord.customerName || ord.supplierName || 'Nhà cung cấp')
+                                  : (ord.customerName || ord.customer || ord.receiver || 'Khách hàng');
+
+                                extraOutboundItems.push({
+                                  binCode: fullBinCode,
+                                  productName: pName,
+                                  sku: pSku,
+                                  quantity: -qtyNum,
+                                  allocated: 0,
+                                  supplierName: partner,
+                                  inboundDate: ord.orderDate
+                                    ? new Date(ord.orderDate).toLocaleDateString('vi-VN') + ' ' + new Date(ord.orderDate).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+                                    : 'Hôm nay',
+                                  orderCode,
+                                  unit,
+                                  occupancyPct: itemPct,
+                                  isOutbound: true,
+                                  isDisposal,
+                                  isTransfer,
+                                  isRetail,
+                                  isReturn,
+                                  orderType: ord.orderType,
+                                });
+                              }
+                            });
+                          });
+
+                          if (extraOutboundItems.length > 0) {
+                            setActiveBinGoodsDetails((prev: any) => {
+                              if (!prev || prev.fullBinCode !== fullBinCode) return prev;
+                              const currentList = prev.goodsList || [];
+                              const updated = [...currentList];
+                              extraOutboundItems.forEach((extra: any) => {
+                                const exists = updated.some((u: any) =>
+                                  u.orderCode === extra.orderCode &&
+                                  (u.sku === extra.sku || u.productName === extra.productName) &&
+                                  Boolean(u.isOutbound) === Boolean(extra.isOutbound)
+                                );
+                                if (!exists) {
+                                  updated.push(extra);
+                                }
+                              });
+                              return {
+                                ...prev,
+                                goodsList: updated,
+                              };
+                            });
+                          }
+                        } catch (eEnrich) {
+                          console.error('Error enriching bin goods details:', eEnrich);
+                        }
                       }}
                     />
                   </div>
@@ -2164,16 +2312,45 @@ export default function CreateWarehousePage() {
                   });
 
                   const groupedGoodsList = Array.from(groupedGoodsMap.values()).map((grp) => {
-                    const inboundTransactions = grp.transactions.filter((t) => !t.isOutbound && (Number(t.quantity || t.totalPhysical || 0) > 0 || !t.orderCode?.startsWith('PX')));
-                    const outboundTransactions = grp.transactions.filter((t) => t.isOutbound || Number(t.quantity || 0) < 0);
+                    const inboundTransactions = grp.transactions.filter(
+                      (t) =>
+                        !t.isOutbound &&
+                        (Number(t.quantity || t.totalPhysical || 0) > 0 ||
+                          (!t.orderCode?.startsWith('PX') && !t.orderCode?.startsWith('XH') && !t.orderCode?.startsWith('XK')))
+                    );
+                    const outboundTransactions = grp.transactions.filter(
+                      (t) =>
+                        t.isOutbound ||
+                        Number(t.quantity || 0) < 0 ||
+                        (t.orderCode &&
+                          (t.orderCode.startsWith('PX') ||
+                            t.orderCode.startsWith('XH') ||
+                            t.orderCode.startsWith('XK') ||
+                            t.orderCode.includes('XUẤT') ||
+                            t.orderCode.includes('HỦY')))
+                    );
 
-                    const totalInbound = inboundTransactions.reduce((s, t) => s + Math.abs(Number(t.quantity || t.totalPhysical || 0)), 0) || 500;
-                    const totalOutbound = outboundTransactions.reduce((s, t) => s + Math.abs(Number(t.quantity || 0)), 0);
+                    const totalInbound =
+                      inboundTransactions.reduce(
+                        (s, t) => s + Math.abs(Number(t.quantity || t.totalPhysical || 0)),
+                        0
+                      ) || (grp.baseOccupancyPct ? 100 : 0);
+                    const totalOutbound = outboundTransactions.reduce(
+                      (s, t) => s + Math.abs(Number(t.quantity || 0)),
+                      0
+                    );
 
                     const netQty = Math.max(0, totalInbound - totalOutbound);
-                    const netOccupancyPct = totalInbound > 0
-                      ? Math.round((netQty / totalInbound) * grp.baseOccupancyPct)
-                      : Math.max(0, grp.baseOccupancyPct - Math.round((totalOutbound / 500) * grp.baseOccupancyPct));
+                    const baseOccupancy =
+                      grp.baseOccupancyPct !== undefined && grp.baseOccupancyPct > 0
+                        ? grp.baseOccupancyPct
+                        : customConfig?.occupancyPct !== undefined
+                        ? Number(customConfig.occupancyPct)
+                        : 100;
+                    const netOccupancyPct =
+                      totalInbound > 0
+                        ? Math.round((netQty / totalInbound) * baseOccupancy)
+                        : 0;
 
                     return {
                       ...grp,
@@ -2187,7 +2364,15 @@ export default function CreateWarehousePage() {
                   const grandTotalInbound = groupedGoodsList.reduce((s, g) => s + g.totalInbound, 0);
                   const grandTotalOutbound = groupedGoodsList.reduce((s, g) => s + g.totalOutbound, 0);
                   const grandNetPhysical = Math.max(0, grandTotalInbound - grandTotalOutbound);
-                  const grandOccupancyPct = Math.min(100, groupedGoodsList.reduce((s, g) => s + g.netOccupancyPct, 0));
+
+                  let grandOccupancyPct = 0;
+                  if (groupedGoodsList.length > 0) {
+                    grandOccupancyPct = Math.min(100, groupedGoodsList.reduce((s, g) => s + (g.netOccupancyPct || 0), 0));
+                  } else if (occupiedInfo?.occupancyPct !== undefined && Number(occupiedInfo.occupancyPct) >= 0) {
+                    grandOccupancyPct = Number(occupiedInfo.occupancyPct);
+                  } else if (customConfig?.occupancyPct !== undefined) {
+                    grandOccupancyPct = Number(customConfig.occupancyPct);
+                  }
 
                   return (
                     <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-4 shadow-sm">
@@ -2232,7 +2417,7 @@ export default function CreateWarehousePage() {
                             Chi tiết phân bổ % sản phẩm trong ô:
                           </span>
                           <div className="flex flex-wrap gap-2">
-                            {groupedGoodsList.map((g, idx) => (
+                            {groupedGoodsList.filter((g) => g.netQty > 0).map((g, idx) => (
                               <div
                                 key={idx}
                                 className="inline-flex items-center gap-2 px-3 py-1 rounded-lg border border-cyan-300 dark:border-cyan-800 bg-white dark:bg-slate-900 text-xs font-bold text-slate-800 dark:text-slate-200 shadow-2xs"
@@ -2240,10 +2425,15 @@ export default function CreateWarehousePage() {
                                 <span className="font-mono text-cyan-800 dark:text-cyan-300 font-extrabold">[{g.sku}]</span>
                                 <span>{g.productName}:</span>
                                 <span className="px-2 py-0.5 rounded bg-cyan-700 text-white font-black text-[11px]">
-                                  {g.netOccupancyPct}% dung tích
+                                  {g.netOccupancyPct}% dung tích ({g.netQty.toLocaleString('vi-VN')} {g.unit})
                                 </span>
                               </div>
                             ))}
+                            {groupedGoodsList.filter((g) => g.netQty > 0).length === 0 && (
+                              <span className="text-xs font-semibold text-slate-400 italic">
+                                Toàn bộ hàng hóa trên ô kệ đã xuất hết về số lượng 0 (0% dung tích chiếm dụng - Kệ trống).
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -2278,48 +2468,148 @@ export default function CreateWarehousePage() {
                             {(() => {
                               let sttCounter = 1;
                               return groupedGoodsList.flatMap((group, gIdx) => {
-                                return group.transactions.map((tx: any, txIdx: number) => {
+                                const sortedTransactions = [...group.transactions].sort((a, b) => {
+                                  const aIsOut = Boolean(
+                                    a.isOutbound ||
+                                      Number(a.quantity || 0) < 0 ||
+                                      (a.orderCode && (a.orderCode.startsWith('PX') || a.orderCode.startsWith('XH') || a.orderCode.startsWith('XK')))
+                                  );
+                                  const bIsOut = Boolean(
+                                    b.isOutbound ||
+                                      Number(b.quantity || 0) < 0 ||
+                                      (b.orderCode && (b.orderCode.startsWith('PX') || b.orderCode.startsWith('XH') || b.orderCode.startsWith('XK')))
+                                  );
+                                  if (!aIsOut && bIsOut) return -1;
+                                  if (aIsOut && !bIsOut) return 1;
+                                  return 0;
+                                });
+
+                                return sortedTransactions.map((tx: any, txIdx: number) => {
                                   const currentStt = sttCounter++;
+                                  const orderCodeUpper = (tx.orderCode || '').toUpperCase();
+                                  const isDisposal = Boolean(
+                                    tx.isDisposal ||
+                                    tx.orderType === 'disposal' ||
+                                    orderCodeUpper.startsWith('PXH') ||
+                                    orderCodeUpper.startsWith('XH-') ||
+                                    orderCodeUpper.includes('XUẤT HỦY') ||
+                                    orderCodeUpper.includes('XUAT HUY')
+                                  );
+                                  const isTransfer = Boolean(
+                                    !isDisposal && (
+                                      tx.isTransfer ||
+                                      tx.orderType === 'transfer' ||
+                                      orderCodeUpper.startsWith('CK') ||
+                                      orderCodeUpper.startsWith('PCK') ||
+                                      orderCodeUpper.includes('CHUYỂN KHO') ||
+                                      orderCodeUpper.includes('CHUYEN KHO')
+                                    )
+                                  );
+                                  const isRetail = Boolean(
+                                    !isDisposal && !isTransfer && (
+                                      tx.isRetail ||
+                                      tx.orderType === 'retail' ||
+                                      tx.orderType === 'RETAIL' ||
+                                      orderCodeUpper.startsWith('XBL')
+                                    )
+                                  );
+                                  const isReturn = Boolean(
+                                    !isDisposal && !isTransfer && !isRetail && (
+                                      tx.isReturn ||
+                                      tx.orderType === 'return-supplier' ||
+                                      tx.orderType === 'return' ||
+                                      orderCodeUpper.startsWith('XTR')
+                                    )
+                                  );
                                   const isOutbound = Boolean(
+                                    isDisposal ||
+                                    isTransfer ||
+                                    isRetail ||
+                                    isReturn ||
                                     tx.isOutbound ||
                                     Number(tx.quantity || 0) < 0 ||
-                                    (tx.orderCode && (
-                                      tx.orderCode.startsWith('PX') ||
-                                      tx.orderCode.startsWith('XK') ||
-                                      tx.orderCode.startsWith('XH') ||
-                                      tx.orderCode.startsWith('XBL') ||
-                                      tx.orderCode.startsWith('XBH') ||
-                                      tx.orderCode.includes('XUẤT') ||
-                                      tx.orderCode.includes('XUAT') ||
-                                      tx.orderCode === 'ĐANG-XUẤT'
-                                    )) ||
-                                    (tx.supplierName && (
-                                      tx.supplierName.includes('Đơn xuất') ||
-                                      tx.supplierName.includes('Xuất kho')
-                                    ))
+                                    orderCodeUpper.startsWith('PX') ||
+                                    orderCodeUpper.startsWith('XK') ||
+                                    orderCodeUpper.startsWith('XBH') ||
+                                    orderCodeUpper.startsWith('DDH') ||
+                                    orderCodeUpper.includes('XUẤT') ||
+                                    orderCodeUpper.includes('XUAT') ||
+                                    orderCodeUpper === 'ĐANG-XUẤT'
                                   );
                                   const qtyNum = Math.abs(Number(tx.quantity || tx.totalPhysical || tx.qty || 0));
-                                  const realOrderCode = tx.orderCode && tx.orderCode !== 'ĐANG-XẾP'
-                                    ? tx.orderCode
-                                    : (tx.id ? `${isOutbound ? 'PXK' : 'PNK'}-${String(tx.id).padStart(4, '0')}` : (isOutbound ? 'PXK-DRAFT' : 'PNK-TỒN-KHO'));
+                                  const realOrderCode =
+                                    tx.orderCode && tx.orderCode !== 'ĐANG-XẾP'
+                                      ? tx.orderCode
+                                      : tx.id
+                                      ? `${isDisposal ? 'PXH' : isRetail ? 'XBL' : isTransfer ? 'PCK' : isOutbound ? 'PXK' : 'PNK'}-${String(tx.id).padStart(4, '0')}`
+                                      : isDisposal
+                                      ? 'PXH-DRAFT'
+                                      : isRetail
+                                      ? 'XBL-DRAFT'
+                                      : isTransfer
+                                      ? 'PCK-DRAFT'
+                                      : isOutbound
+                                      ? 'PXK-DRAFT'
+                                      : 'PNK-TỒN-KHO';
+
+                                  const partnerDisplay = tx.supplierName && !tx.supplierName.includes('Xuất hủy nội bộ')
+                                    ? tx.supplierName
+                                    : isDisposal
+                                    ? (tx.supplierName || 'Xuất hủy nội bộ')
+                                    : isTransfer
+                                    ? 'Chuyển kho nội bộ'
+                                    : isReturn
+                                    ? 'Nhà cung cấp'
+                                    : (tx.supplierName && tx.supplierName !== 'Xuất hủy nội bộ' ? tx.supplierName : 'Khách hàng');
+
+                                  const basePct = Number(group.baseOccupancyPct || customConfig?.occupancyPct || (occupiedInfo?.occupancyPct ? Number(occupiedInfo.occupancyPct) : 100));
+                                  const totalInboundQty = Math.max(1, group.totalInbound || (group.transactions?.filter((x: any) => !x.isOutbound).reduce((s: number, x: any) => s + Math.abs(Number(x.quantity || 0)), 0)) || 1);
+                                  const calculatedDeductedPct = Math.max(1, Math.round((qtyNum / totalInboundQty) * basePct));
 
                                   return (
                                     <tr
                                       key={`${gIdx}-${txIdx}`}
-                                      className={`hover:bg-cyan-50/40 dark:hover:bg-slate-800/50 transition-colors ${isOutbound ? 'bg-rose-50/20 dark:bg-rose-950/20' : ''
-                                        }`}
+                                      className={`transition-colors ${
+                                        isDisposal
+                                          ? 'hover:bg-amber-50/50 dark:hover:bg-slate-800/50 bg-amber-50/30 dark:bg-amber-950/25'
+                                          : isTransfer
+                                          ? 'hover:bg-purple-50/40 dark:hover:bg-slate-800/50 bg-purple-50/20 dark:bg-purple-950/20'
+                                          : isRetail
+                                          ? 'hover:bg-sky-50/40 dark:hover:bg-slate-800/50 bg-sky-50/20 dark:bg-sky-950/20'
+                                          : isReturn
+                                          ? 'hover:bg-orange-50/40 dark:hover:bg-slate-800/50 bg-orange-50/20 dark:bg-orange-950/20'
+                                          : isOutbound
+                                          ? 'hover:bg-rose-50/40 dark:hover:bg-slate-800/50 bg-rose-50/20 dark:bg-rose-950/20'
+                                          : 'hover:bg-cyan-50/40 dark:hover:bg-slate-800/50'
+                                      }`}
                                     >
                                       <td className="py-2.5 px-3 text-center font-bold text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900 align-middle">
                                         {currentStt}
                                       </td>
 
                                       <td className="py-2.5 px-3 text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle">
-                                        {isOutbound ? (
-                                          <span className="px-2 py-0.5 rounded font-black text-[10px] bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs">
-                                            XUẤT KHO
+                                        {isDisposal ? (
+                                          <span className="px-2.5 py-1 rounded-md font-black text-[10px] bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs uppercase tracking-wider">
+                                            XUẤT HỦY
+                                          </span>
+                                        ) : isTransfer ? (
+                                          <span className="px-2.5 py-1 rounded-md font-black text-[10px] bg-purple-100 text-purple-900 border border-purple-300 shadow-2xs uppercase tracking-wider">
+                                            CHUYỂN KHO
+                                          </span>
+                                        ) : isRetail ? (
+                                          <span className="px-2.5 py-1 rounded-md font-black text-[10px] bg-sky-100 text-sky-900 border border-sky-300 shadow-2xs uppercase tracking-wider">
+                                            XUẤT BÁN LẺ
+                                          </span>
+                                        ) : isReturn ? (
+                                          <span className="px-2.5 py-1 rounded-md font-black text-[10px] bg-orange-100 text-orange-900 border border-orange-300 shadow-2xs uppercase tracking-wider">
+                                            TRẢ NCC
+                                          </span>
+                                        ) : isOutbound ? (
+                                          <span className="px-2.5 py-1 rounded-md font-black text-[10px] bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs uppercase tracking-wider">
+                                            XUẤT BÁN HÀNG
                                           </span>
                                         ) : (
-                                          <span className="px-2 py-0.5 rounded font-black text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs">
+                                          <span className="px-2.5 py-1 rounded-md font-black text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs uppercase tracking-wider">
                                             NHẬP KHO
                                           </span>
                                         )}
@@ -2331,10 +2621,19 @@ export default function CreateWarehousePage() {
 
                                       <td className="py-2.5 px-3 text-center font-mono font-medium border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle">
                                         <span
-                                          className={`px-2.5 py-1 rounded border font-bold text-xs ${isOutbound
-                                            ? 'bg-rose-50 text-rose-900 border-rose-300'
-                                            : 'bg-cyan-50 text-cyan-950 border-cyan-300'
-                                            }`}
+                                          className={`px-2.5 py-1 rounded border font-bold text-xs ${
+                                            isDisposal
+                                              ? 'bg-amber-50 text-amber-950 border-amber-300'
+                                              : isTransfer
+                                              ? 'bg-purple-50 text-purple-950 border-purple-300'
+                                              : isRetail
+                                              ? 'bg-sky-50 text-sky-950 border-sky-300'
+                                              : isReturn
+                                              ? 'bg-orange-50 text-orange-950 border-orange-300'
+                                              : isOutbound
+                                              ? 'bg-rose-50 text-rose-900 border-rose-300'
+                                              : 'bg-cyan-50 text-cyan-950 border-cyan-300'
+                                          }`}
                                         >
                                           {realOrderCode}
                                         </span>
@@ -2349,23 +2648,58 @@ export default function CreateWarehousePage() {
                                       </td>
 
                                       <td
-                                        className={`py-2.5 px-3 text-center font-black border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle ${isOutbound ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
-                                          }`}
+                                        className={`py-2.5 px-3 text-center font-black border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle ${
+                                          isDisposal
+                                            ? 'text-amber-700 dark:text-amber-400'
+                                            : isTransfer
+                                            ? 'text-purple-600 dark:text-purple-400'
+                                            : isRetail
+                                            ? 'text-sky-600 dark:text-sky-400'
+                                            : isReturn
+                                            ? 'text-orange-600 dark:text-orange-400'
+                                            : isOutbound
+                                            ? 'text-rose-600 dark:text-rose-400'
+                                            : 'text-emerald-600 dark:text-emerald-400'
+                                        }`}
                                       >
                                         {isOutbound ? `-${qtyNum.toLocaleString('vi-VN')}` : `+${qtyNum.toLocaleString('vi-VN')}`}
                                       </td>
 
                                       <td className="py-2.5 px-3 text-center text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle">
-                                        {tx.inboundDate}
+                                        {tx.inboundDate || 'Đã lưu'}
                                       </td>
 
                                       <td className="py-2.5 px-3 text-center font-medium text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 align-middle">
-                                        {tx.supplierName}
+                                        {partnerDisplay}
                                       </td>
 
                                       <td className="py-2.5 px-3 text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900 align-middle">
-                                        <span className={`px-2.5 py-1 rounded-full font-black text-xs border ${isOutbound ? 'bg-rose-100 text-rose-900 border-rose-300 dark:bg-rose-950 dark:text-rose-200' : 'bg-cyan-100 text-cyan-900 border-cyan-300 dark:bg-cyan-950 dark:text-cyan-200'}`}>
-                                          {isOutbound ? `Còn lại ${group.netOccupancyPct}%` : `${tx.occupancyPct || group.baseOccupancyPct || 100}%`}
+                                        <span
+                                          className={`px-2.5 py-1 rounded-full font-black text-xs border ${
+                                            isDisposal
+                                              ? 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-200'
+                                              : isTransfer
+                                              ? 'bg-purple-100 text-purple-900 border-purple-300 dark:bg-purple-950 dark:text-purple-200'
+                                              : isRetail
+                                              ? 'bg-sky-100 text-sky-900 border-sky-300 dark:bg-sky-950 dark:text-sky-200'
+                                              : isReturn
+                                              ? 'bg-orange-100 text-orange-900 border-orange-300 dark:bg-orange-950 dark:text-orange-200'
+                                              : isOutbound
+                                              ? 'bg-rose-100 text-rose-900 border-rose-300 dark:bg-rose-950 dark:text-rose-200'
+                                              : 'bg-cyan-100 text-cyan-900 border-cyan-300 dark:bg-cyan-950 dark:text-cyan-200'
+                                          }`}
+                                        >
+                                          {isDisposal
+                                            ? `-${calculatedDeductedPct}% (Xuất hủy)`
+                                            : isTransfer
+                                            ? `-${calculatedDeductedPct}% (Chuyển kho)`
+                                            : isRetail
+                                            ? `-${calculatedDeductedPct}% (Bán lẻ)`
+                                            : isReturn
+                                            ? `-${calculatedDeductedPct}% (Trả NCC)`
+                                            : isOutbound
+                                            ? `-${calculatedDeductedPct}% (Xuất bán)`
+                                            : `+${tx.occupancyPct || basePct}% (Ban đầu)`}
                                         </span>
                                       </td>
                                     </tr>
@@ -2374,6 +2708,87 @@ export default function CreateWarehousePage() {
                               });
                             })()}
                           </tbody>
+
+                          {/* DÒNG TỔNG HỢP CUỐI CÙNG CHO TỪNG SẢN PHẨM TRÊN KỆ & TỔNG TOÀN BỘ Ô */}
+                          <tfoot className="border-t-2 border-cyan-600 bg-cyan-50/70 dark:bg-slate-800 font-extrabold text-xs">
+                            {(() => {
+                              const activeProducts = groupedGoodsList.filter((g) => g.netQty > 0);
+
+                              if (activeProducts.length === 0) {
+                                return (
+                                  <tr className="bg-slate-50 dark:bg-slate-800/80 text-xs">
+                                    <td colSpan={10} className="py-4 px-4 text-center font-bold text-slate-500 border border-slate-300 dark:border-slate-700">
+                                      Toàn bộ hàng hóa trên ô kệ [{editingBinCode}] đã xuất hết về số lượng 0 (Kệ trống - 0% dung tích chiếm dụng).
+                                    </td>
+                                  </tr>
+                                );
+                              }
+
+                              return (
+                                <>
+                                  {activeProducts.map((group, gIdx) => (
+                                    <tr
+                                      key={`summary-${gIdx}`}
+                                      className="bg-cyan-50/90 dark:bg-cyan-950/60 border-t border-cyan-300 dark:border-cyan-800 text-xs font-bold"
+                                    >
+                                      <td className="py-2.5 px-3 text-center font-black text-cyan-900 dark:text-cyan-200 border border-slate-300 dark:border-slate-700 bg-cyan-100/70 dark:bg-cyan-900/60">
+                                        Σ {activeProducts.length > 1 ? gIdx + 1 : ''}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap">
+                                        <span className="px-2.5 py-1 rounded-md font-black text-[10px] bg-emerald-600 text-white border border-emerald-500 shadow-2xs uppercase tracking-wider">
+                                          TỒN THỰC TẾ
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center font-mono font-black text-cyan-800 dark:text-cyan-300 border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900">
+                                        {group.sku}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center font-bold text-xs text-cyan-950 dark:text-cyan-100 border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-cyan-100/50 dark:bg-cyan-950/40">
+                                        TỔNG TỒN Ô {binShort}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center font-black text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900">
+                                        {group.productName}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center font-bold text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900">
+                                        {group.unit}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center font-black text-sm border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+                                        +{group.netQty.toLocaleString('vi-VN')}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900">
+                                        Hiện tại
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center font-bold text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
+                                        Đang lưu tại ô {editingBinCode}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900">
+                                        <span className="px-3 py-1 rounded-full font-black text-xs border bg-cyan-600 text-white border-cyan-500 shadow-2xs">
+                                          {group.netOccupancyPct}% dung tích
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                  {activeProducts.length > 1 && (
+                                    <tr className="bg-cyan-100/90 dark:bg-cyan-900/70 border-t-2 border-cyan-500 text-xs font-black text-cyan-950 dark:text-cyan-100">
+                                      <td colSpan={6} className="py-2.5 px-4 text-right uppercase tracking-wider border border-slate-300 dark:border-slate-700">
+                                        TỔNG CỘNG TOÀN BỘ Ô [{editingBinCode}] ({activeProducts.length} mặt hàng còn tồn):
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center text-sm font-black text-cyan-950 dark:text-cyan-100 border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-cyan-200/50 dark:bg-cyan-900">
+                                        +{grandNetPhysical.toLocaleString('vi-VN')}
+                                      </td>
+                                      <td colSpan={2} className="py-2.5 px-3 text-center text-xs font-bold text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
+                                        Đang lưu trữ tại {editingBinCode}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-cyan-200/50 dark:bg-cyan-900">
+                                        <span className="px-3.5 py-1 rounded-full font-black text-xs bg-cyan-700 text-white shadow-sm border border-cyan-600">
+                                          {grandOccupancyPct}% (Tổng ô)
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </tfoot>
                         </table>
                       </div>
                     </div>

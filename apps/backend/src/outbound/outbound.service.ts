@@ -593,6 +593,9 @@ export class OutboundService implements OnModuleInit {
 
   private async persistDetails(orderId: string, items: OutboundItemDto[], branchCode?: string) {
     const saved: OutboundDetail[] = [];
+    const orderObj = await this.orderRepo.findOneBy({ id: orderId });
+    const isDisposalOrder = orderObj?.orderType === 'disposal' || Boolean(orderObj?.orderNo && (orderObj.orderNo.startsWith('PXH') || orderObj.orderNo.includes('HỦY')));
+
     for (const item of items) {
       let product: Product | null = null;
       if (item.productId && /^\d+$/.test(String(item.productId))) {
@@ -609,8 +612,8 @@ export class OutboundService implements OnModuleInit {
       if (qty <= 0 && !item.productName && !item.productSku && !item.productId) continue;
 
       const unitPrice = parseNumber(item.unitPrice ?? item.price);
-      const lossAmount = item.lossAmount !== undefined ? parseNumber(item.lossAmount) : (unitPrice * qty);
-      const totalDisposalAmount = item.totalDisposalAmount !== undefined ? parseNumber(item.totalDisposalAmount) : (unitPrice + lossAmount);
+      const lossAmount = isDisposalOrder ? (item.lossAmount !== undefined ? parseNumber(item.lossAmount) : (unitPrice * qty)) : 0;
+      const totalDisposalAmount = isDisposalOrder ? (item.totalDisposalAmount !== undefined ? parseNumber(item.totalDisposalAmount) : (unitPrice + lossAmount)) : 0;
       const discountPercent = parseNumber(item.discountPercent);
       const discountAmount = parseNumber(item.discountAmount) || ((unitPrice * qty * discountPercent) / 100);
       const vatPercent = parseNumber(item.vatPercent);
@@ -666,14 +669,20 @@ export class OutboundService implements OnModuleInit {
       if (!productId) continue;
 
       const locCode = detail.warehouseCode || order.branchCode;
+      const qty = Number(detail.requiredQty) || 0;
+      if (qty <= 0) continue;
 
-      // 1. Tìm balance theo kho cụ thể
+      const isDirectShipped =
+        !order.status ||
+        ['Đã giao hàng', 'shipped', 'Đã xuất hủy', 'COMPLETED', 'Đã hoàn thành'].includes(order.status) ||
+        order.orderType === 'disposal';
+
+      // 1. Trừ tồn kho cấp kho tổng quát (KH010, KH006...)
       let [balance] = await this.dataSource.query(
         `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? AND locationCode = ? LIMIT 1`,
         [productId, locCode],
       );
 
-      // 2. Nếu không tìm thấy tại kho này, lấy balance có tồn kho lớn nhất
       if (!balance) {
         const rows = await this.dataSource.query(
           `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? ORDER BY totalPhysical DESC LIMIT 1`,
@@ -684,7 +693,6 @@ export class OutboundService implements OnModuleInit {
         }
       }
 
-      // 3. Nếu chưa có balance nào, tạo mới
       if (!balance) {
         const insertRes = await this.dataSource.query(
           `INSERT INTO stock_balances (productId, locationCode, totalPhysical, allocated, available) VALUES (?, ?, 0, 0, 0)`,
@@ -692,12 +700,6 @@ export class OutboundService implements OnModuleInit {
         );
         balance = { id: insertRes.insertId, totalPhysical: 0, allocated: 0, available: 0 };
       }
-
-      const qty = Number(detail.requiredQty) || 0;
-      const isDirectShipped =
-        !order.status ||
-        ['Đã giao hàng', 'shipped', 'Đã xuất hủy', 'COMPLETED', 'Đã hoàn thành'].includes(order.status) ||
-        order.orderType === 'disposal';
 
       if (isDirectShipped) {
         const newPhysical = Math.max(0, Number(balance.totalPhysical) - qty);
@@ -712,6 +714,33 @@ export class OutboundService implements OnModuleInit {
         await this.dataSource.query(
           `UPDATE stock_balances SET allocated = ?, available = ? WHERE id = ?`,
           [newAllocated, newAvailable, balance.id],
+        );
+      }
+
+      // 2. Trừ tồn kho tại Ô KỆ cụ thể trong stock_balances (nếu có lưu balance theo mã ô)
+      const binCodesToDeduct = this.extractBinCodesFromDetail(detail);
+      if (binCodesToDeduct.length > 0 && isDirectShipped) {
+        for (const bCode of binCodesToDeduct) {
+          const shortCode = (bCode.split('-').pop() || bCode).trim();
+          await this.dataSource.query(
+            `UPDATE stock_balances 
+             SET totalPhysical = GREATEST(0, totalPhysical - ?), 
+                 available = GREATEST(0, available - ?) 
+             WHERE productId = ? AND (locationCode = ? OR locationCode = ? OR locationCode LIKE ?)`,
+            [qty, qty, productId, bCode, shortCode, `%${shortCode}%`],
+          );
+        }
+      }
+
+      // 3. Khấu trừ trực tiếp vào customBins trong bảng warehouses
+      if (isDirectShipped) {
+        await this.updateWarehouseSubWarehousesBinStock(
+          locCode,
+          binCodesToDeduct,
+          detail.productSku || '',
+          detail.productName || '',
+          qty,
+          true,
         );
       }
     }
@@ -745,6 +774,13 @@ export class OutboundService implements OnModuleInit {
       if (!productId) continue;
 
       const locCode = detail.warehouseCode || order.branchCode;
+      const qty = Number(detail.requiredQty) || 0;
+      if (qty <= 0) continue;
+
+      const isDirectShipped =
+        !order.status ||
+        ['Đã giao hàng', 'shipped', 'Đã xuất hủy', 'COMPLETED', 'Đã hoàn thành'].includes(order.status) ||
+        order.orderType === 'disposal';
 
       let [balance] = await this.dataSource.query(
         `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? AND locationCode = ? LIMIT 1`,
@@ -761,29 +797,224 @@ export class OutboundService implements OnModuleInit {
         }
       }
 
-      if (!balance) continue;
+      if (balance) {
+        if (isDirectShipped) {
+          const newPhysical = Number(balance.totalPhysical) + qty;
+          const newAvailable = Math.max(0, newPhysical - Number(balance.allocated));
+          await this.dataSource.query(
+            `UPDATE stock_balances SET totalPhysical = ?, available = ? WHERE id = ?`,
+            [newPhysical, newAvailable, balance.id],
+          );
+        } else {
+          const newAllocated = Math.max(0, Number(balance.allocated) - qty);
+          const newAvailable = Math.max(0, Number(balance.totalPhysical) - newAllocated);
+          await this.dataSource.query(
+            `UPDATE stock_balances SET allocated = ?, available = ? WHERE id = ?`,
+            [newAllocated, newAvailable, balance.id],
+          );
+        }
+      }
 
-      const qty = Number(detail.requiredQty) || 0;
-      const isDirectShipped =
-        !order.status ||
-        ['Đã giao hàng', 'shipped', 'Đã xuất hủy', 'COMPLETED', 'Đã hoàn thành'].includes(order.status) ||
-        order.orderType === 'disposal';
+      // Hoàn trả vào stock_balances cấp ô kệ
+      const binCodesToDeduct = this.extractBinCodesFromDetail(detail);
+      if (binCodesToDeduct.length > 0 && isDirectShipped) {
+        for (const bCode of binCodesToDeduct) {
+          const shortCode = (bCode.split('-').pop() || bCode).trim();
+          await this.dataSource.query(
+            `UPDATE stock_balances 
+             SET totalPhysical = totalPhysical + ?, 
+                 available = available + ? 
+             WHERE productId = ? AND (locationCode = ? OR locationCode = ? OR locationCode LIKE ?)`,
+            [qty, qty, productId, bCode, shortCode, `%${shortCode}%`],
+          );
+        }
+      }
 
+      // Hoàn trả lại vào customBins trong bảng warehouses
       if (isDirectShipped) {
-        const newPhysical = Number(balance.totalPhysical) + qty;
-        const newAvailable = Math.max(0, newPhysical - Number(balance.allocated));
-        await this.dataSource.query(
-          `UPDATE stock_balances SET totalPhysical = ?, available = ? WHERE id = ?`,
-          [newPhysical, newAvailable, balance.id],
-        );
-      } else {
-        const newAllocated = Math.max(0, Number(balance.allocated) - qty);
-        const newAvailable = Math.max(0, Number(balance.totalPhysical) - newAllocated);
-        await this.dataSource.query(
-          `UPDATE stock_balances SET allocated = ?, available = ? WHERE id = ?`,
-          [newAllocated, newAvailable, balance.id],
+        await this.updateWarehouseSubWarehousesBinStock(
+          locCode,
+          binCodesToDeduct,
+          detail.productSku || '',
+          detail.productName || '',
+          qty,
+          false,
         );
       }
+    }
+  }
+
+  private extractBinCodesFromDetail(detail: OutboundDetail): string[] {
+    const raw = detail.locationBin || detail.note || '';
+    if (!raw) return [];
+    let binStr = raw;
+    const noteMatch = raw.match(/\[Vị trí Ô:\s*([^\]]+)\]/i);
+    if (noteMatch) {
+      binStr = noteMatch[1];
+    }
+    return binStr
+      .split(',')
+      .map((s) => s.split('(')[0].trim())
+      .filter((s) => Boolean(s) && s !== '-' && s !== 'Chưa chọn');
+  }
+
+  private async updateWarehouseSubWarehousesBinStock(
+    whCode: string,
+    binCodes: string[],
+    sku: string,
+    productName: string,
+    qty: number,
+    isDeduct: boolean,
+  ) {
+    if (!whCode) return;
+    try {
+      const [whRow] = await this.dataSource.query(
+        `SELECT id, code, subWarehouses FROM warehouses WHERE code = ? OR id = ? LIMIT 1`,
+        [whCode.trim(), whCode.trim()],
+      );
+      if (!whRow || !whRow.subWarehouses) return;
+
+      let subWarehouses: any[];
+      try {
+        subWarehouses = typeof whRow.subWarehouses === 'string'
+          ? JSON.parse(whRow.subWarehouses)
+          : whRow.subWarehouses;
+      } catch {
+        return;
+      }
+      if (!Array.isArray(subWarehouses)) return;
+
+      const norm = (s: string) =>
+        s ? s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().trim() : '';
+
+      const targetSku = (sku || '').trim().toUpperCase();
+      const targetNameNorm = norm(productName || '');
+
+      let changed = false;
+
+      // Danh sách các key cần khớp cho các ô kệ
+      const targetKeys = new Set<string>();
+      binCodes.forEach((b) => {
+        const clean = b.split('(')[0].trim();
+        const short = (clean.split('-').pop() || clean).trim();
+        const stripped = clean.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        targetKeys.add(clean.toUpperCase());
+        targetKeys.add(short.toUpperCase());
+        targetKeys.add(stripped);
+      });
+
+      subWarehouses.forEach((sub) => {
+        (sub.racks || []).forEach((rk: any) => {
+          const customBins = rk.customBins;
+          if (!customBins || typeof customBins !== 'object') return;
+
+          Object.keys(customBins).forEach((k) => {
+            const kClean = k.split('(')[0].trim();
+            const kShort = (kClean.split('-').pop() || kClean).trim();
+            const kStripped = kClean.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+            const isMatchedBin =
+              targetKeys.size === 0 || // Nếu không chỉ định ô thì tìm ô chứa đúng sản phẩm
+              targetKeys.has(k.toUpperCase()) ||
+              targetKeys.has(kClean.toUpperCase()) ||
+              targetKeys.has(kShort.toUpperCase()) ||
+              targetKeys.has(kStripped);
+
+            if (!isMatchedBin) return;
+
+            const binData = customBins[k];
+            if (!binData) return;
+
+            let existingProds: Array<{ sku?: string; productName: string; qty: number; occupancyPct: number; unit?: string }> = [];
+            if (Array.isArray(binData.products) && binData.products.length > 0) {
+              existingProds = binData.products.map((p: any) => ({ ...p }));
+            } else if (binData.productName && Number(binData.totalPhysical || 0) > 0) {
+              existingProds = [{
+                sku: binData.sku || '',
+                productName: binData.productName,
+                qty: Number(binData.totalPhysical || 0),
+                occupancyPct: Number(binData.occupancyPct || 100),
+                unit: binData.unit || 'cái',
+              }];
+            }
+
+            let matchIdx = existingProds.findIndex((p) => {
+              const pSku = (p.sku || '').trim().toUpperCase();
+              const pNameNorm = norm(p.productName || '');
+              return (targetSku && pSku && targetSku === pSku) ||
+                (targetNameNorm && pNameNorm && (targetNameNorm.includes(pNameNorm) || pNameNorm.includes(targetNameNorm)));
+            });
+
+            if (isDeduct) {
+              if (matchIdx >= 0) {
+                const matchedProd = existingProds[matchIdx];
+                const oldItemQty = Number(matchedProd.qty || 0);
+                const oldItemPct = Number(matchedProd.occupancyPct || 0);
+                const newItemQty = Math.max(0, oldItemQty - qty);
+                const newItemPct = oldItemQty > 0 ? Math.max(0, Math.round((newItemQty / oldItemQty) * oldItemPct)) : 0;
+
+                if (newItemQty > 0) {
+                  existingProds[matchIdx] = { ...matchedProd, qty: newItemQty, occupancyPct: newItemPct };
+                } else {
+                  existingProds.splice(matchIdx, 1);
+                }
+              } else {
+                const oldQty = Number(binData.totalPhysical || 0);
+                const newQty = Math.max(0, oldQty - qty);
+                const oldPct = Number(binData.occupancyPct || 0);
+                const newPct = oldQty > 0 ? Math.max(0, Math.round((newQty / oldQty) * oldPct)) : 0;
+                existingProds = newQty > 0 ? [{
+                  sku: targetSku || 'SKU-001',
+                  productName: productName || 'Hàng tồn kho',
+                  qty: newQty,
+                  occupancyPct: newPct,
+                  unit: binData.unit || 'cái',
+                }] : [];
+              }
+            } else {
+              // Revert / Cộng trả lại
+              if (matchIdx >= 0) {
+                existingProds[matchIdx].qty = Number(existingProds[matchIdx].qty || 0) + qty;
+                existingProds[matchIdx].occupancyPct = Math.min(100, Number(existingProds[matchIdx].occupancyPct || 0) + 10);
+              } else {
+                existingProds.push({
+                  sku: targetSku || 'SKU-001',
+                  productName: productName || 'Hàng tồn kho',
+                  qty,
+                  occupancyPct: 20,
+                  unit: binData.unit || 'cái',
+                });
+              }
+            }
+
+            const newTotalQty = existingProds.reduce((sum, p) => sum + (Number(p.qty) || 0), 0);
+            const newTotalPct = Math.min(100, existingProds.reduce((sum, p) => sum + (Number(p.occupancyPct) || 0), 0));
+            const noteDesc = newTotalQty === 0
+              ? 'Ô Trống'
+              : `Đã chứa: ${newTotalPct}% (${existingProds.map((p) => `${p.productName}: ${p.qty} ${p.unit || 'cái'} [${p.occupancyPct}%]`).join(', ')})`;
+
+            customBins[k] = {
+              ...binData,
+              totalPhysical: newTotalQty,
+              occupancyPct: newTotalQty === 0 ? 0 : (newTotalPct || 10),
+              products: existingProds,
+              notes: noteDesc,
+              productName: newTotalQty === 0 ? 'Ô Trống' : (existingProds.map((p) => p.productName).join(', ') || 'Hàng tồn kho'),
+              sku: existingProds.map((p) => p.sku).filter(Boolean).join(', '),
+            };
+            changed = true;
+          });
+        });
+      });
+
+      if (changed) {
+        await this.dataSource.query(
+          `UPDATE warehouses SET subWarehouses = ? WHERE id = ?`,
+          [JSON.stringify(subWarehouses), whRow.id],
+        );
+      }
+    } catch (e) {
+      console.error('Lỗi cập nhật subWarehouses kho hàng khi xuất kho:', e);
     }
   }
 

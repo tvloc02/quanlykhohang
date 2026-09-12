@@ -33,7 +33,9 @@ import {
   getStoredWarehouses,
   saveStoredWarehouses,
   toggleWarehouseFreezeApi,
+  upsertWarehouseToApi,
 } from '../../../shared/utils/warehouseAssignments';
+import { clearWarehouseBinsCache } from '../../warehouses/components/WarehouseSlottingGrid';
 
 // ─── TYPES & INTERFACES ────────────────────────────────────────
 
@@ -69,14 +71,19 @@ export interface ProductOption {
 }
 
 export interface ZoneItem {
+  id?: string;
   zoneCode: string;
   zoneName: string;
-  locationBin?: string; // Automatically retrieved shelf/bin location from CSDL
-  assignedBins?: string[]; // Array of bin codes
-  systemQty: number;
-  countedQty: number;
-  assignedStaff: string; // Staff assigned to count this specific zone/product row
+  rackCode?: string;
+  binCode?: string; // Mã ô kệ cụ thể, ví dụ "D1", "D2", "R01-D1"
+  fullBinCode?: string; // Mã đầy đủ trong CSDL kho
+  locationBin: string; // Tên hiển thị kệ: "Ô D1" hoặc "Kệ R01 - Ô D1"
+  assignedBins?: string[]; // [binCode]
+  systemQty: number; // Số lượng tồn trên ô kệ này
+  countedQty: number; // Số lượng thực đếm trên ô kệ này
+  assignedStaff: string; // Nhân viên kiểm đếm
   note: string;
+  initialBinQty?: number; // Số lượng tồn ban đầu của ô kệ
 }
 
 export interface StocktakeRicItem {
@@ -88,7 +95,8 @@ export function findStockBinForProduct(
   pId: string,
   pSku: string,
   pName: string,
-  whCode?: string
+  whCode?: string,
+  stockBalances?: any[]
 ): { locationBin: string; assignedBins: string[] } {
   if (!pId && !pSku && !pName) {
     return { locationBin: '', assignedBins: [] };
@@ -101,40 +109,24 @@ export function findStockBinForProduct(
 
   const foundBinsSet = new Set<string>();
 
-  // 1. Check local stock-in orders
-  try {
-    const rawOrders = localStorage.getItem('stored_stock_in_orders');
-    if (rawOrders) {
-      const orders = JSON.parse(rawOrders);
-      if (Array.isArray(orders)) {
-        orders.forEach((ord: any) => {
-          const oWh = String(ord.warehouseCode || ord.branchCode || '').trim().toUpperCase();
-          if (targetWh && oWh && oWh !== targetWh && !oWh.includes(targetWh) && !targetWh.includes(oWh)) return;
-          (ord.details || ord.items || []).forEach((item: any) => {
-            const iName = String(item.productName || '').trim().toLowerCase();
-            const iSku = String(item.sku || item.productSku || '').trim().toLowerCase();
-            const iId = String(item.productId || '').trim().toLowerCase();
-
-            const matches =
-              (normId && iId && normId === iId) ||
-              (normSku && iSku && normSku === iSku) ||
-              (normName && iName && (normName.includes(iName) || iName.includes(normName)));
-
-            if (matches) {
-              let bins: string[] = item.assignedBins || (item.locationBin ? item.locationBin.split(',') : []);
-              bins.forEach((b: string) => {
-                const clean = b.split('(')[0].trim();
-                const short = (clean.split('-').pop() || clean).toUpperCase();
-                if (short) foundBinsSet.add(short);
-              });
-            }
-          });
-        });
-      }
+  // Helper to filter out fake bin strings like warehouse codes
+  const isValidBin = (bin: string) => {
+    if (!bin) return false;
+    const bUpper = bin.toUpperCase().trim();
+    if (
+      bUpper === targetWh ||
+      bUpper === 'KH009' ||
+      bUpper.startsWith('KHO-') ||
+      /^KH\d{3,}$/i.test(bUpper) ||
+      bUpper.includes('PHÂN KHU') ||
+      bUpper.includes('KHO')
+    ) {
+      return false;
     }
-  } catch {}
+    return true;
+  };
 
-  // 2. Check stored warehouses customBins
+  // 1. Check stored warehouses customBins for THIS WAREHOUSE ONLY
   try {
     const rawWhs = localStorage.getItem('smart-wms-warehouses');
     if (rawWhs) {
@@ -142,19 +134,33 @@ export function findStockBinForProduct(
       if (Array.isArray(whs)) {
         whs.forEach((wh: any) => {
           const wCode = String(wh.code || wh.id || '').trim().toUpperCase();
-          if (targetWh && wCode && wCode !== targetWh && !wCode.includes(targetWh) && !targetWh.includes(wCode)) return;
+          if (targetWh && wCode !== targetWh && !wCode.includes(targetWh) && !targetWh.includes(wCode)) return;
+
           (wh.subWarehouses || []).forEach((sub: any) => {
             (sub.racks || []).forEach((rk: any) => {
               if (rk.customBins) {
                 Object.entries(rk.customBins).forEach(([bKey, cfg]: [string, any]) => {
+                  if (!cfg) return;
                   const notes = String(cfg?.notes || '').toLowerCase();
                   const pct = Number(cfg?.occupancyPct || 0);
+                  const totalPhys = Number(cfg?.totalPhysical || 0);
+
+                  const prods: any[] = Array.isArray(cfg.products) ? cfg.products : [];
+                  const matchInProds = prods.some((pr: any) => {
+                    const prSku = String(pr.sku || pr.productSku || '').trim().toLowerCase();
+                    const prName = String(pr.name || pr.productName || '').trim().toLowerCase();
+                    return (normSku && prSku === normSku) || (normName && prName === normName);
+                  });
+
                   if (
-                    pct > 0 &&
-                    ((normName && notes.includes(normName)) || (normSku && notes.includes(normSku)))
+                    (pct > 0 || totalPhys > 0) &&
+                    (matchInProds ||
+                      (normName && notes.includes(normName)) ||
+                      (normSku && notes.includes(normSku)) ||
+                      (normSku && String(cfg.sku || '').toLowerCase() === normSku))
                   ) {
                     const shortBin = (bKey.split('-').pop() || bKey).toUpperCase();
-                    foundBinsSet.add(shortBin);
+                    if (isValidBin(shortBin)) foundBinsSet.add(shortBin);
                   }
                 });
               }
@@ -163,7 +169,59 @@ export function findStockBinForProduct(
         });
       }
     }
-  } catch {}
+  } catch { }
+
+  // 2. Check stockBalances if passed or attached
+  if (Array.isArray(stockBalances) && stockBalances.length > 0) {
+    stockBalances.forEach((b: any) => {
+      const bLoc = String(b.locationCode || '').trim().toUpperCase();
+      if (!bLoc) return;
+      if (targetWh && !bLoc.startsWith(targetWh) && !bLoc.includes(targetWh)) return;
+
+      const clean = bLoc.split('(')[0].trim();
+      const parts = clean.split('-');
+      if (parts.length >= 3) {
+        const binPart = parts.slice(2).join('-');
+        if (isValidBin(binPart)) foundBinsSet.add(binPart);
+      } else if (parts.length === 2 && !parts[1].startsWith('ZONE')) {
+        if (isValidBin(parts[1])) foundBinsSet.add(parts[1]);
+      }
+    });
+  }
+
+  // 3. Check local stock-in orders for THIS WAREHOUSE ONLY
+  try {
+    const rawOrders = localStorage.getItem('stored_stock_in_orders');
+    if (rawOrders) {
+      const orders = JSON.parse(rawOrders);
+      if (Array.isArray(orders)) {
+        orders.forEach((ord: any) => {
+          const oWh = String(ord.warehouseCode || ord.branchCode || '').trim().toUpperCase();
+          if (!oWh || (targetWh && oWh !== targetWh && !oWh.includes(targetWh) && !targetWh.includes(oWh))) return;
+
+          (ord.details || ord.items || []).forEach((item: any) => {
+            const iName = String(item.productName || item.product?.name || '').trim().toLowerCase();
+            const iSku = String(item.sku || item.productSku || item.product?.internalSku || '').trim().toLowerCase();
+            const iId = String(item.productId || item.product?.id || '').trim().toLowerCase();
+
+            const matches =
+              (normId && iId && normId === iId) ||
+              (normSku && iSku && normSku === iSku) ||
+              (normName && iName && normName === iName);
+
+            if (matches) {
+              let bins: string[] = item.assignedBins || (item.locationBin ? item.locationBin.split(',') : []);
+              bins.forEach((b: string) => {
+                const clean = b.split('(')[0].trim();
+                const short = (clean.split('-').pop() || clean).toUpperCase();
+                if (isValidBin(short)) foundBinsSet.add(short);
+              });
+            }
+          });
+        });
+      }
+    }
+  } catch { }
 
   const binsList = Array.from(foundBinsSet);
   if (binsList.length > 0) {
@@ -176,6 +234,75 @@ export function findStockBinForProduct(
   return { locationBin: '', assignedBins: [] };
 }
 
+// Helper tính toán số lượng đã xuất kho (đơn xuất kho, xuất bán lẻ, xuất hủy) của từng ô kệ cụ thể
+function getBinOutboundDeduction(
+  targetWh: string,
+  cleanLoc: string,
+  rackCode: string,
+  shortBin: string,
+  normSku: string,
+  normId: string
+): number {
+  let totalOut = 0;
+  try {
+    const rawOutbound = localStorage.getItem('stored_outbound_orders');
+    if (!rawOutbound) return 0;
+    const outList = JSON.parse(rawOutbound);
+    if (!Array.isArray(outList)) return 0;
+
+    const nWh = (targetWh || '').trim().toUpperCase();
+    const nSku = (normSku || '').trim().toUpperCase();
+    const nId = (normId || '').trim();
+    const nShort = shortBin.toUpperCase().trim();
+    const rCell = rackCode ? `${rackCode.toUpperCase()}-${nShort}` : '';
+    const normClean = cleanLoc.replace(/[^A-Z0-9]/g, '').toUpperCase();
+    const normShort = nShort.replace(/[^A-Z0-9]/g, '');
+
+    outList.forEach((ord: any) => {
+      if (ord.status === 'CANCELLED') return;
+      const oWh = String(ord.warehouseCode || ord.branchCode || ord.warehouse?.code || '').trim().toUpperCase();
+      if (nWh && oWh && oWh !== nWh && !oWh.includes(nWh) && !nWh.includes(oWh)) return;
+
+      const details = Array.isArray(ord.details) ? ord.details : Array.isArray(ord.items) ? ord.items : [];
+      details.forEach((item: any) => {
+        const itemSku = String(item.productSku || item.sku || item.product?.internalSku || item.product?.sku || '').trim().toUpperCase();
+        const itemId = String(item.productId || item.product?.id || '').trim();
+        const matchesProduct = (nSku && itemSku === nSku) || (nId && itemId === nId);
+        if (!matchesProduct) return;
+
+        let rawBins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : [];
+        if (rawBins.length === 0 && item.locationBin) rawBins = String(item.locationBin).split(',').map((s: string) => s.trim());
+        if (rawBins.length === 0 && item.note) {
+          const noteMatches = [...item.note.matchAll(/\[(?:Vị trí Ô|Vị trí|Ô):\s*([^\]]+)\]/gi)];
+          noteMatches.forEach((m: any) => {
+            if (m[1]) rawBins.push(m[1].trim());
+          });
+        }
+
+        const isMatch = rawBins.some((b: string) => {
+          const clean = b.split('(')[0].trim().toUpperCase();
+          const bShort = (clean.split('-').pop() || clean).toUpperCase().trim();
+          const cleanNorm = clean.replace(/[^A-Z0-9]/g, '');
+          return (
+            clean === cleanLoc.toUpperCase() ||
+            (rCell && clean === rCell) ||
+            cleanNorm === normClean ||
+            clean.endsWith(`-${nShort}`) ||
+            clean === nShort ||
+            bShort === nShort ||
+            cleanNorm.endsWith(normShort)
+          );
+        });
+
+        if (isMatch) {
+          totalOut += Math.abs(Number(item.qty || item.quantity || item.requiredQty || 0));
+        }
+      });
+    });
+  } catch { }
+  return totalOut;
+}
+
 export function getProductWarehouseStock(p: ProductOption, whCode: string): number {
   if (!p) return 0;
 
@@ -184,7 +311,72 @@ export function getProductWarehouseStock(p: ProductOption, whCode: string): numb
     return Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? 0);
   }
 
-  // 1. Check stockBalances if present
+  const normSku = String(p.internalSku || '').trim().toLowerCase();
+  const normName = String(p.name || '').trim().toLowerCase();
+  const normId = String(p.id || '').trim().toLowerCase();
+
+  // 1. Kiểm tra cấu hình kệ customBins trong smart-wms-warehouses ĐẦU TIÊN (Nguồn dữ liệu chuẩn xác nhất theo sơ đồ kho)
+  try {
+    const rawWhs = localStorage.getItem('smart-wms-warehouses');
+    if (rawWhs) {
+      const whs = JSON.parse(rawWhs);
+      if (Array.isArray(whs)) {
+        const matchedWh = whs.find((wh: any) => {
+          const wCode = String(wh.code || wh.id || '').trim().toLowerCase();
+          return wCode === targetCode || wCode.includes(targetCode) || targetCode.includes(wCode);
+        });
+
+        if (matchedWh) {
+          let customBinSum = 0;
+          let foundInCustom = false;
+
+          (matchedWh.subWarehouses || []).forEach((sub: any) => {
+            const zCode = String(sub.code || sub.id || 'PK-A').toUpperCase();
+            (sub.racks || []).forEach((rk: any) => {
+              const rkCode = String(rk.code || rk.id || '').toUpperCase();
+              if (rk.customBins) {
+                Object.entries(rk.customBins).forEach(([bKey, cfg]: [string, any]) => {
+                  if (!cfg) return;
+                  const prods: any[] = Array.isArray(cfg.products) && cfg.products.length > 0
+                    ? cfg.products
+                    : (cfg.sku || cfg.productName ? [cfg] : []);
+
+                  prods.forEach((prodItem: any) => {
+                    const iSku = String(prodItem.sku || prodItem.productSku || '').trim().toLowerCase();
+                    const iName = String(prodItem.productName || prodItem.name || '').trim().toLowerCase();
+                    const notes = String(cfg.notes || '').toLowerCase();
+
+                    const matchProd =
+                      (normSku && iSku && normSku === iSku) ||
+                      (normName && iName && normName === iName) ||
+                      (normSku && notes.includes(normSku)) ||
+                      (normName && notes.includes(normName));
+
+                    if (matchProd) {
+                      const cleanBin = bKey.split('(')[0].trim();
+                      const shortBin = (cleanBin.split('-').pop() || cleanBin).toUpperCase().trim();
+                      const cleanLoc = cleanBin.includes('-ZONE-') ? cleanBin : `${targetCode.toUpperCase()}-${zCode}-${rkCode}-${shortBin}`;
+                      const initQty = Number(prodItem.qty || prodItem.quantity || prodItem.totalPhysical || cfg.totalPhysical || 1);
+                      const outDeduct = getBinOutboundDeduction(targetCode, cleanLoc, rkCode, shortBin, normSku, normId);
+                      const binNet = Math.max(0, initQty - outDeduct);
+                      customBinSum += binNet;
+                      foundInCustom = true;
+                    }
+                  });
+                });
+              }
+            });
+          });
+
+          if (foundInCustom) {
+            return customBinSum;
+          }
+        }
+      }
+    }
+  } catch { }
+
+  // 2. Check stockBalances if present (Official inventory from CSDL for this warehouse)
   if (Array.isArray(p.stockBalances) && p.stockBalances.length > 0) {
     let sum = 0;
     let found = false;
@@ -193,11 +385,15 @@ export function getProductWarehouseStock(p: ProductOption, whCode: string): numb
       const bCode = (b.locationCode || '').trim().toLowerCase();
       if (!bCode) return;
 
+      const normTarget = targetCode.replace(/[^a-z0-9]/g, '');
+      const normB = bCode.replace(/[^a-z0-9]/g, '');
+
       const matches =
         bCode === targetCode ||
         bCode.startsWith(targetCode + '-') ||
         bCode.startsWith(targetCode + '_') ||
         bCode.startsWith(targetCode + '/') ||
+        (normTarget && normB && (normB === normTarget || normB.startsWith(normTarget + '-'))) ||
         ((targetCode === 'kh006' || targetCode === 'kho thanh trì') &&
           (bCode === 'kh006' || bCode === 'kho thanh trì' || bCode === 'kho-nvl' || bCode.startsWith('kho-nvl-')));
 
@@ -208,10 +404,38 @@ export function getProductWarehouseStock(p: ProductOption, whCode: string): numb
       }
     });
 
-    if (found) return sum;
+    if (found) {
+      // Deduct any local outbound orders recorded for this warehouse
+      let localOutDeduct = 0;
+      try {
+        const rawOutbound = localStorage.getItem('stored_outbound_orders');
+        if (rawOutbound) {
+          const outboundList = JSON.parse(rawOutbound);
+          if (Array.isArray(outboundList)) {
+            outboundList.forEach((ord: any) => {
+              if (ord.status === 'CANCELLED') return;
+              const oWh = (ord.warehouseCode || ord.branchCode || '').trim().toLowerCase();
+              if (oWh && oWh !== targetCode && !oWh.includes(targetCode) && !targetCode.includes(oWh)) return;
+              const details = ord.details || ord.items || [];
+              details.forEach((item: any) => {
+                const itemProdId = String(item.productId || item.product?.id || '');
+                const itemSku = String(item.productSku || item.sku || item.product?.internalSku || '').toLowerCase();
+                if (
+                  (itemProdId && itemProdId === String(p.id)) ||
+                  (itemSku && p.internalSku && itemSku === p.internalSku.toLowerCase())
+                ) {
+                  localOutDeduct += Number(item.qty ?? item.quantity ?? 0);
+                }
+              });
+            });
+          }
+        }
+      } catch { }
+      return Math.max(0, sum - localOutDeduct);
+    }
   }
 
-  // 2. Check warehouseStocks object if present on product entity
+  // 3. Check warehouseStocks object if present on product entity
   if (p.warehouseStocks && typeof p.warehouseStocks === 'object') {
     for (const [k, v] of Object.entries(p.warehouseStocks)) {
       const kLower = k.trim().toLowerCase();
@@ -223,23 +447,73 @@ export function getProductWarehouseStock(p: ProductOption, whCode: string): numb
           (kLower === 'kh006' || kLower === 'kho thanh trì' || kLower === 'kho-nvl'))
       ) {
         const val = Number(v);
-        if (!isNaN(val)) return val;
+        if (!isNaN(val)) return Math.max(0, val);
       }
     }
   }
 
-  // 3. Fallback: If product has overall stock and target warehouse is default, return overall stock
-  const overallStock = Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? 0);
-  const isDefaultWh =
-    !p.defaultWarehouse ||
-    p.defaultWarehouse.trim().toLowerCase() === targetCode ||
-    targetCode === 'kh001' ||
-    targetCode === 'kho tổng (hà nội)';
+  // 4. Check stored_stock_in_orders for this warehouse ONLY
+  try {
+    const rawOrders = localStorage.getItem('stored_stock_in_orders');
+    if (rawOrders) {
+      const orders = JSON.parse(rawOrders);
+      if (Array.isArray(orders)) {
+        let whInbound = 0;
+        let foundInOrders = false;
 
-  if (overallStock > 0 && isDefaultWh) {
-    return overallStock;
-  }
+        orders.forEach((ord: any) => {
+          const oWh = String(ord.warehouseCode || ord.branchCode || '').trim().toLowerCase();
+          if (!oWh || (oWh !== targetCode && !oWh.includes(targetCode) && !targetCode.includes(oWh))) return;
 
+          (ord.details || ord.items || []).forEach((item: any) => {
+            const iSku = String(item.sku || item.productSku || item.product?.internalSku || '').trim().toLowerCase();
+            const iName = String(item.productName || item.product?.name || '').trim().toLowerCase();
+            const iId = String(item.productId || item.product?.id || '').trim().toLowerCase();
+
+            if (
+              (normId && iId && normId === iId) ||
+              (normSku && iSku && normSku === iSku) ||
+              (normName && iName && normName === iName)
+            ) {
+              whInbound += Number(item.receivedQty ?? item.expectedQty ?? item.qty ?? item.quantity ?? 0);
+              foundInOrders = true;
+            }
+          });
+        });
+
+        if (foundInOrders) {
+          let whOutbound = 0;
+          try {
+            const rawOutbound = localStorage.getItem('stored_outbound_orders');
+            if (rawOutbound) {
+              const outList = JSON.parse(rawOutbound);
+              if (Array.isArray(outList)) {
+                outList.forEach((ord: any) => {
+                  if (ord.status === 'CANCELLED') return;
+                  const oWh = String(ord.warehouseCode || ord.branchCode || '').trim().toLowerCase();
+                  if (!oWh || (oWh !== targetCode && !oWh.includes(targetCode) && !targetCode.includes(oWh))) return;
+
+                  (ord.details || ord.items || []).forEach((item: any) => {
+                    const iSku = String(item.productSku || item.sku || item.product?.internalSku || '').toLowerCase();
+                    const iId = String(item.productId || item.product?.id || '').toLowerCase();
+                    if (
+                      (normId && iId && normId === iId) ||
+                      (normSku && iSku && normSku === iSku)
+                    ) {
+                      whOutbound += Number(item.qty ?? item.quantity ?? 0);
+                    }
+                  });
+                });
+              }
+            }
+          } catch { }
+          return Math.max(0, whInbound - whOutbound);
+        }
+      }
+    }
+  } catch { }
+
+  // 5. Khi đã chọn kho kiểm kê cụ thể, nếu kho đó không có hàng thì trả về 0
   return 0;
 }
 
@@ -250,39 +524,145 @@ export function findProductStockAndBinsByZone(
 ): Array<{
   zoneCode: string;
   zoneName: string;
+  rackCode?: string;
+  binCode?: string;
+  fullBinCode?: string;
   systemQty: number;
   locationBin: string;
   assignedBins: string[];
+  initialBinQty?: number;
 }> {
   const normWh = (whCode || '').trim().toUpperCase();
-  const resultsMap = new Map<
+  const totalSys = getProductWarehouseStock(p, whCode);
+
+  const normSku = String(p.internalSku || '').trim().toLowerCase();
+  const normName = String(p.name || '').trim().toLowerCase();
+  const normId = String(p.id || '').trim().toLowerCase();
+
+  // Helper to validate bin string
+  const isValidBin = (bin: string) => {
+    if (!bin) return false;
+    const bUpper = bin.toUpperCase().trim();
+    if (
+      bUpper === normWh ||
+      bUpper === 'KH009' ||
+      bUpper.startsWith('KHO-') ||
+      /^KH\d{3,}$/i.test(bUpper) ||
+      bUpper.includes('PHÂN KHU') ||
+      bUpper.includes('KHO')
+    ) {
+      return false;
+    }
+    return true;
+  };
+
+  const discoveredBinsMap = new Map<
     string,
     {
       zoneCode: string;
       zoneName: string;
+      rackCode: string;
+      binCode: string;
+      fullBinCode: string;
+      locationBin: string;
       systemQty: number;
-      binsSet: Set<string>;
+      initialBinQty: number;
     }
   >();
 
-  const getOrCreateZoneResult = (zCode: string, defaultName?: string) => {
-    const cleanZCode = zCode.toUpperCase();
-    if (!resultsMap.has(cleanZCode)) {
-      const matchedSub = subWarehouses.find(
-        (s: any) => (s.code || s.id || '').toUpperCase() === cleanZCode
-      );
-      const zName = matchedSub?.name || defaultName || `Phân khu ${cleanZCode}`;
-      resultsMap.set(cleanZCode, {
-        zoneCode: cleanZCode,
-        zoneName: zName,
-        systemQty: 0,
-        binsSet: new Set<string>(),
-      });
-    }
-    return resultsMap.get(cleanZCode)!;
-  };
+  // 1. Kiểm tra cấu hình kệ customBins trong smart-wms-warehouses của ĐÚNG kho được chọn
+  try {
+    const rawWhs = localStorage.getItem('smart-wms-warehouses');
+    if (rawWhs) {
+      const whs = JSON.parse(rawWhs);
+      if (Array.isArray(whs)) {
+        const matchedWh = whs.find((w: any) => {
+          const wCode = String(w.code || w.id || '').trim().toUpperCase();
+          return wCode === normWh || wCode.includes(normWh) || normWh.includes(wCode);
+        });
 
-  // 1. Check stockBalances
+        if (matchedWh) {
+          (matchedWh.subWarehouses || []).forEach((sub: any) => {
+            const zCode = String(sub.code || sub.id || 'PK-A').toUpperCase();
+            const zName = sub.name || `Phân khu ${zCode}`;
+            (sub.racks || []).forEach((rk: any) => {
+              const rkCode = String(rk.code || rk.id || '').toUpperCase();
+              if (rk.customBins) {
+                Object.entries(rk.customBins).forEach(([bKey, cfg]: [string, any]) => {
+                  if (!cfg) return;
+                  const prods: any[] = Array.isArray(cfg.products) ? cfg.products : [];
+                  const matchInProds = prods.find((pr: any) => {
+                    const prSku = String(pr.sku || pr.productSku || '').trim().toLowerCase();
+                    const prName = String(pr.name || pr.productName || '').trim().toLowerCase();
+                    return (normSku && prSku === normSku) || (normName && prName === normName);
+                  });
+
+                  const notes = String(cfg?.notes || '').toLowerCase();
+                  const pct = Number(cfg?.occupancyPct || 0);
+                  const totalPhys = Number(cfg?.totalPhysical || 0);
+
+                  if (
+                    (pct > 0 || totalPhys > 0) &&
+                    (Boolean(matchInProds) ||
+                      (normName && notes.includes(normName)) ||
+                      (normSku && notes.includes(normSku)) ||
+                      (normSku && String(cfg.sku || '').toLowerCase() === normSku))
+                  ) {
+                    const cleanBin = bKey.split('(')[0].trim();
+                    const shortBin = (cleanBin.split('-').pop() || cleanBin).toUpperCase().trim();
+                    if (isValidBin(shortBin)) {
+                      const cleanLoc = cleanBin.includes('-ZONE-') ? cleanBin : `${normWh}-${zCode}-${rkCode}-${shortBin}`;
+                      // Dùng key chuẩn hóa zCode + shortBin để tuyệt đối không bị trùng lặp kệ
+                      const uniqueKey = `${zCode}___${shortBin}`;
+                      const initQty = Number(matchInProds?.qty || matchInProds?.quantity || totalPhys || 1);
+                      const outDeduct = getBinOutboundDeduction(normWh, cleanLoc, rkCode, shortBin, normSku, normId);
+                      const netStock = Math.max(0, initQty - outDeduct);
+                      const locLabel = rkCode ? `Kệ ${rkCode} - Ô ${shortBin}` : `Ô ${shortBin}`;
+
+                      if (discoveredBinsMap.has(uniqueKey)) {
+                        const existing = discoveredBinsMap.get(uniqueKey)!;
+                        existing.systemQty += netStock;
+                        existing.initialBinQty += initQty;
+                      } else {
+                        discoveredBinsMap.set(uniqueKey, {
+                          zoneCode: zCode,
+                          zoneName: zName,
+                          rackCode: rkCode,
+                          binCode: shortBin,
+                          fullBinCode: cleanLoc,
+                          locationBin: locLabel,
+                          systemQty: netStock,
+                          initialBinQty: initQty,
+                        });
+                      }
+                    }
+                  }
+                });
+              }
+            });
+          });
+        }
+      }
+    }
+  } catch { }
+
+  // NẾU ĐÃ TÌM THẤY KỆ TỪ smart-wms-warehouses -> DỪNG NGAY LẬP TỨC!
+  // Tuyệt đối không quét tiếp stockBalances hay stored_stock_in_orders để tránh bị nhân đôi kệ
+  if (discoveredBinsMap.size > 0) {
+    return Array.from(discoveredBinsMap.values()).map((b) => ({
+      zoneCode: b.zoneCode,
+      zoneName: b.zoneName,
+      rackCode: b.rackCode,
+      binCode: b.binCode,
+      fullBinCode: b.fullBinCode,
+      systemQty: b.systemQty,
+      locationBin: b.locationBin,
+      assignedBins: [b.binCode],
+      initialBinQty: b.initialBinQty,
+    }));
+  }
+
+  // 2. Check stockBalances của ĐÚNG kho kiểm kê (Chỉ dùng khi chưa cấu hình customBins trong kho)
   if (Array.isArray(p.stockBalances) && p.stockBalances.length > 0) {
     p.stockBalances.forEach((b: any) => {
       const bLoc = String(b.locationCode || '').trim().toUpperCase();
@@ -290,87 +670,111 @@ export function findProductStockAndBinsByZone(
       let bBins: string[] = Array.isArray(b.assignedBins)
         ? b.assignedBins
         : b.locationBin
-        ? String(b.locationBin).split(',').map((s) => s.trim())
-        : [];
+          ? String(b.locationBin).split(',').map((s) => s.trim())
+          : [];
 
-      if (bLoc) {
-        const matchingSub = subWarehouses.find(
-          (s: any) => (s.code || s.id || '').toUpperCase() === bLoc
-        );
-        if (matchingSub) {
-          const res = getOrCreateZoneResult(matchingSub.code || matchingSub.id, matchingSub.name);
-          res.systemQty += bQty;
-          bBins.forEach((bin) => bin && res.binsSet.add(bin));
-        } else if (
-          bLoc === normWh ||
-          bLoc === 'KH006' ||
-          bLoc === 'KHO-NVL' ||
-          bLoc === 'KHO-TONG'
-        ) {
-          if (bBins.length > 0) {
-            bBins.forEach((bin) => {
-              const prefix = bin.split('-')[0] || '';
-              const sub =
-                subWarehouses.find((s) =>
-                  (s.code || s.id || '').toUpperCase().includes(prefix.toUpperCase())
-                ) || subWarehouses[0];
-              if (sub) {
-                const res = getOrCreateZoneResult(sub.code || sub.id, sub.name);
-                res.binsSet.add(bin);
-                if (res.systemQty === 0 && bQty > 0) res.systemQty = bQty;
-              }
-            });
-          } else {
-            const firstSub = subWarehouses[0];
-            if (firstSub) {
-              const res = getOrCreateZoneResult(firstSub.code || firstSub.id, firstSub.name);
-              res.systemQty += bQty;
-            }
+      const isWhMatch =
+        bLoc === normWh ||
+        bLoc.startsWith(normWh + '-') ||
+        bLoc.startsWith(normWh + '_') ||
+        ((normWh === 'KH006' || normWh === 'KHO-NVL' || normWh === 'KHO-TONG') &&
+          (bLoc === 'KH006' || bLoc === 'KHO-NVL' || bLoc === 'KHO-TONG'));
+
+      if (isWhMatch) {
+        let targetSub =
+          subWarehouses.find((s: any) => bLoc.includes((s.code || s.id || '').toUpperCase())) ||
+          subWarehouses[0] || { code: 'PK-A', name: 'Phân Khu A' };
+
+        const zCode = String(targetSub.code || targetSub.id || 'PK-A').toUpperCase();
+        const zName = targetSub.name || `Phân khu ${zCode}`;
+
+        if (bBins.length === 0) {
+          const parts = bLoc.split('-');
+          if (parts.length >= 3) {
+            bBins = [parts.slice(2).join('-')];
           }
         }
+
+        bBins.forEach((bin) => {
+          const cleanBin = bin.split('(')[0].trim();
+          const shortBin = (cleanBin.split('-').pop() || cleanBin).toUpperCase().trim();
+          if (isValidBin(shortBin)) {
+            const rackPrefix = cleanBin.includes('-') ? cleanBin.split('-')[0].toUpperCase() : '';
+            const uniqueKey = `${zCode}___${shortBin}`;
+            const locLabel = rackPrefix ? `Kệ ${rackPrefix} - Ô ${shortBin}` : `Ô ${shortBin}`;
+            if (!discoveredBinsMap.has(uniqueKey)) {
+              discoveredBinsMap.set(uniqueKey, {
+                zoneCode: zCode,
+                zoneName: zName,
+                rackCode: rackPrefix,
+                binCode: shortBin,
+                fullBinCode: cleanBin,
+                locationBin: locLabel,
+                systemQty: bQty > 0 ? bQty : 1,
+                initialBinQty: bQty > 0 ? bQty : 1,
+              });
+            }
+          }
+        });
       }
     });
   }
 
-  // 2. Check local stock-in history for bin assignments
-  try {
-    const rawOrders = localStorage.getItem('stored_stock_in_orders');
-    if (rawOrders) {
-      const orders = JSON.parse(rawOrders);
-      if (Array.isArray(orders)) {
-        orders.forEach((ord: any) => {
-          const oWh = String(ord.warehouseCode || ord.branchCode || '').trim().toUpperCase();
-          if (normWh && oWh && oWh !== normWh && !oWh.includes(normWh) && !normWh.includes(oWh))
-            return;
-          (ord.details || ord.items || []).forEach((item: any) => {
-            const iSku = String(item.sku || item.productSku || '').trim().toUpperCase();
-            const iId = String(item.productId || '').trim();
-            if (iId === String(p.id) || (iSku && iSku === (p.internalSku || '').toUpperCase())) {
-              let bins: string[] =
-                item.assignedBins || (item.locationBin ? item.locationBin.split(',') : []);
-              bins.forEach((b: string) => {
-                const clean = b.split('(')[0].trim().toUpperCase();
-                if (clean) {
-                  const rackPrefix = clean.split('-')[0] || '';
-                  const sub =
-                    subWarehouses.find(
-                      (s) =>
-                        (s.code || s.id || '').toUpperCase() === rackPrefix ||
-                        (s.code || s.id || '').toUpperCase().includes(rackPrefix)
-                    ) || subWarehouses[0];
+  // 3. Check local stock-in history của ĐÚNG kho kiểm kê (nếu vẫn chưa có kệ nào)
+  if (discoveredBinsMap.size === 0) {
+    try {
+      const rawOrders = localStorage.getItem('stored_stock_in_orders');
+      if (rawOrders) {
+        const orders = JSON.parse(rawOrders);
+        if (Array.isArray(orders)) {
+          orders.forEach((ord: any) => {
+            const oWh = String(ord.warehouseCode || ord.branchCode || '').trim().toUpperCase();
+            if (!oWh || (normWh && oWh !== normWh && !oWh.includes(normWh) && !normWh.includes(oWh))) return;
 
-                  if (sub) {
-                    const res = getOrCreateZoneResult(sub.code || sub.id, sub.name);
-                    res.binsSet.add(clean);
+            (ord.details || ord.items || []).forEach((item: any) => {
+              const iSku = String(item.sku || item.productSku || '').trim().toUpperCase();
+              const iId = String(item.productId || '').trim();
+              if (iId === String(p.id) || (iSku && iSku === (p.internalSku || '').toUpperCase())) {
+                let bins: string[] =
+                  item.assignedBins || (item.locationBin ? item.locationBin.split(',') : []);
+                const itemQty = Number(item.quantity || item.qty || 1);
+                bins.forEach((b: string) => {
+                  const clean = b.split('(')[0].trim().toUpperCase();
+                  const short = (clean.split('-').pop() || clean).toUpperCase().trim();
+                  if (isValidBin(short)) {
+                    const rackPrefix = clean.includes('-') ? clean.split('-')[0] : '';
+                    const sub =
+                      subWarehouses.find(
+                        (s) =>
+                          (s.code || s.id || '').toUpperCase() === rackPrefix ||
+                          (s.code || s.id || '').toUpperCase().includes(rackPrefix)
+                      ) || subWarehouses[0] || { code: 'PK-A', name: 'Phân Khu A' };
+
+                    const zCode = String(sub.code || sub.id || 'PK-A').toUpperCase();
+                    const zName = sub.name || `Phân khu ${zCode}`;
+                    const uniqueKey = `${zCode}___${short}`;
+                    const locLabel = rackPrefix ? `Kệ ${rackPrefix} - Ô ${short}` : `Ô ${short}`;
+                    if (!discoveredBinsMap.has(uniqueKey)) {
+                      discoveredBinsMap.set(uniqueKey, {
+                        zoneCode: zCode,
+                        zoneName: zName,
+                        rackCode: rackPrefix,
+                        binCode: short,
+                        fullBinCode: clean,
+                        locationBin: locLabel,
+                        systemQty: itemQty,
+                        initialBinQty: itemQty,
+                      });
+                    }
                   }
-                }
-              });
-            }
+                });
+              }
+            });
           });
-        });
+        }
       }
-    }
-  } catch {}
+    } catch { }
+  }
 
   // 3. Fallback autoBins lookup from CSDL / localStorage
   const autoBins = findStockBinForProduct(p.id, p.internalSku, p.name, whCode);
@@ -604,19 +1008,36 @@ export default function CreateStocktakeOrderPage({
     setItems((prev) => {
       return prev.map((item) => {
         const fullProduct = products.find((p) => p.id === item.product.id) || item.product;
-        const zoneLocations = findProductStockAndBinsByZone(fullProduct, locationCode, activeSubWarehouses);
+        const binLocations = findProductStockAndBinsByZone(fullProduct, locationCode, activeSubWarehouses);
 
-        const updatedZones: ZoneItem[] = zoneLocations.map((zLoc) => {
-          const existingMatch = item.zones.find((z) => z.zoneCode.toLowerCase() === zLoc.zoneCode.toLowerCase());
+        const updatedZones: ZoneItem[] = binLocations.map((bLoc) => {
+          const existingMatch = item.zones.find(
+            (z) =>
+              (z.fullBinCode && bLoc.fullBinCode && z.fullBinCode.toUpperCase() === bLoc.fullBinCode.toUpperCase()) ||
+              (z.binCode && bLoc.binCode && z.binCode.toUpperCase() === bLoc.binCode.toUpperCase()) ||
+              (z.zoneCode.toLowerCase() === bLoc.zoneCode.toLowerCase() && !z.binCode && !bLoc.binCode)
+          );
           return {
-            zoneCode: zLoc.zoneCode,
-            zoneName: zLoc.zoneName,
-            locationBin: zLoc.locationBin,
-            assignedBins: zLoc.assignedBins,
-            systemQty: zLoc.systemQty,
-            countedQty: existingMatch ? existingMatch.countedQty : zLoc.systemQty,
+            zoneCode: bLoc.zoneCode,
+            zoneName: bLoc.zoneName,
+            rackCode: bLoc.rackCode,
+            binCode: bLoc.binCode,
+            fullBinCode: bLoc.fullBinCode,
+            locationBin: bLoc.locationBin,
+            assignedBins: bLoc.assignedBins,
+            systemQty: bLoc.systemQty,
+            countedQty:
+              existingMatch && existingMatch.countedQty !== existingMatch.systemQty
+                ? existingMatch.countedQty
+                : bLoc.systemQty,
             assignedStaff: existingMatch?.assignedStaff || userIdentifier || 'System Administrator',
-            note: existingMatch?.note || (zLoc.locationBin ? `[Kệ: ${zLoc.locationBin}]` : ''),
+            note:
+              bLoc.locationBin && bLoc.locationBin !== 'Chưa xếp ô'
+                ? `[Kệ: ${bLoc.locationBin}]`
+                : existingMatch?.note && !existingMatch.note.includes('[Kệ:')
+                  ? existingMatch.note
+                  : '',
+            initialBinQty: bLoc.initialBinQty,
           };
         });
 
@@ -705,12 +1126,16 @@ export default function CreateStocktakeOrderPage({
     const initialZones: ZoneItem[] = zoneLocations.map((zLoc) => ({
       zoneCode: zLoc.zoneCode,
       zoneName: zLoc.zoneName,
+      rackCode: zLoc.rackCode,
+      binCode: zLoc.binCode,
+      fullBinCode: zLoc.fullBinCode,
       locationBin: zLoc.locationBin,
       assignedBins: zLoc.assignedBins,
       systemQty: zLoc.systemQty,
       countedQty: zLoc.systemQty,
       assignedStaff: userIdentifier || 'System Administrator',
-      note: zLoc.locationBin ? `[Kệ: ${zLoc.locationBin}]` : '',
+      note: zLoc.locationBin && zLoc.locationBin !== 'Chưa xếp ô' ? `[Kệ: ${zLoc.locationBin}]` : '',
+      initialBinQty: zLoc.initialBinQty,
     }));
 
     const totalSys = initialZones.reduce((sum, z) => sum + (z.systemQty || 0), 0);
@@ -828,10 +1253,16 @@ export default function CreateStocktakeOrderPage({
         {
           zoneCode: zCode,
           zoneName: zName,
+          rackCode: '',
+          binCode: '',
+          fullBinCode: '',
+          locationBin: 'Chưa xếp ô',
+          assignedBins: [],
           systemQty: 0,
           countedQty: 0,
-          assignedStaff: userIdentifier,
+          assignedStaff: userIdentifier || 'System Administrator',
           note: '',
+          initialBinQty: 0,
         },
       ];
       next[productIndex] = prod;
@@ -861,7 +1292,7 @@ export default function CreateStocktakeOrderPage({
     }
     if (!isWhFrozen) {
       showError(
-        `Kho "${selectedWh?.name || locationCode}" chưa được đóng băng! Vui lòng bấm nút "❄️ Đóng băng kho này" ở góc trên bên phải trước khi lưu phiếu.`
+        `Kho "${selectedWh?.name || locationCode}" chưa được đóng băng! Vui lòng bấm nút "Đóng băng kho này" ở góc trên bên phải trước khi lưu phiếu.`
       );
       return;
     }
@@ -884,9 +1315,11 @@ export default function CreateStocktakeOrderPage({
             productId: pId,
             countedQty: Number(z.countedQty) >= 0 ? Number(z.countedQty) : 0,
             assignee: z.assignedStaff || createdByStaff || userIdentifier,
-            note: z.note
-              ? `[${z.zoneName || z.zoneCode}] ${z.note}`
-              : `[${z.zoneName || z.zoneCode}]`,
+            note: z.locationBin && z.locationBin !== 'Chưa xếp ô'
+              ? `[${z.zoneName || z.zoneCode} - ${z.locationBin}] ${z.note || ''}`
+              : z.note
+                ? `[${z.zoneName || z.zoneCode}] ${z.note}`
+                : `[${z.zoneName || z.zoneCode}]`,
           });
         });
       });
@@ -929,6 +1362,139 @@ export default function CreateStocktakeOrderPage({
         }).catch(() => null);
       }
 
+      // Cập nhật lại số lượng tồn thực tế của từng ô kệ vào CSDL kho (smart-wms-warehouses & Backend API)
+      try {
+        const normWh = (locationCode || '').trim().toUpperCase();
+        const rawWhs = localStorage.getItem('smart-wms-warehouses');
+        if (rawWhs) {
+          const whs = JSON.parse(rawWhs);
+          if (Array.isArray(whs)) {
+            const targetWh = whs.find((w: any) => {
+              const wCode = String(w.code || w.id || '').trim().toUpperCase();
+              return wCode === normWh || wCode.includes(normWh) || normWh.includes(wCode);
+            });
+
+            if (targetWh && Array.isArray(targetWh.subWarehouses)) {
+              let whChanged = false;
+
+              items.forEach((item) => {
+                const normSku = String(item.product.internalSku || '').trim().toLowerCase();
+                const normName = String(item.product.name || '').trim().toLowerCase();
+
+                item.zones.forEach((zone) => {
+                  const counted = Number(zone.countedQty) >= 0 ? Number(zone.countedQty) : 0;
+                  const targetBinCode = (zone.binCode || '').trim().toUpperCase();
+                  const targetFullBin = (zone.fullBinCode || '').trim().toUpperCase();
+
+                  if (!targetBinCode && !targetFullBin) return;
+
+                  targetWh.subWarehouses.forEach((sub: any) => {
+                    (sub.racks || []).forEach((rk: any) => {
+                      if (!rk.customBins) rk.customBins = {};
+
+                      const binKeys = Object.keys(rk.customBins);
+                      let matchedKey = binKeys.find((k) => {
+                        const cleanK = k.split('(')[0].trim().toUpperCase();
+                        const shortK = (cleanK.split('-').pop() || cleanK).toUpperCase();
+                        return (
+                          (targetFullBin && cleanK === targetFullBin) ||
+                          (targetBinCode && (shortK === targetBinCode || cleanK === targetBinCode))
+                        );
+                      });
+
+                      if (!matchedKey && targetBinCode) {
+                        const rkCode = String(rk.code || rk.id || '').toUpperCase();
+                        if (zone.rackCode && rkCode === zone.rackCode.toUpperCase()) {
+                          matchedKey = targetBinCode;
+                        }
+                      }
+
+                      if (matchedKey) {
+                        const cfg = rk.customBins[matchedKey] || {};
+                        let prods: any[] = Array.isArray(cfg.products) ? [...cfg.products] : [];
+
+                        const pIdx = prods.findIndex((p: any) => {
+                          const pSku = String(p.sku || p.productSku || '').trim().toLowerCase();
+                          const pName = String(p.name || p.productName || '').trim().toLowerCase();
+                          return (normSku && pSku === normSku) || (normName && pName === normName);
+                        });
+
+                        if (pIdx >= 0) {
+                          prods[pIdx] = {
+                            ...prods[pIdx],
+                            qty: counted,
+                            quantity: counted,
+                          };
+                        } else if (counted > 0) {
+                          prods.push({
+                            sku: item.product.internalSku,
+                            productSku: item.product.internalSku,
+                            productName: item.product.name,
+                            name: item.product.name,
+                            qty: counted,
+                            quantity: counted,
+                            unit: item.product.unit || 'Cái',
+                            occupancyPct: Math.min(
+                              100,
+                              Math.max(10, Math.round((counted / (cfg.maxCapacity || 500)) * 100))
+                            ),
+                          });
+                        }
+
+                        const totalPhysical =
+                          prods.length > 0
+                            ? prods.reduce((sum: number, p: any) => sum + Number(p.qty || p.quantity || 0), 0)
+                            : counted;
+
+                        const maxCap = Number(cfg.maxCapacity || 500);
+                        const occupancyPct =
+                          totalPhysical > 0 ? Math.min(100, Math.round((totalPhysical / maxCap) * 100)) : 0;
+
+                        const descNotes =
+                          prods.length > 0
+                            ? prods
+                              .map((p: any) => `${p.productName || p.name}: ${p.qty || p.quantity} ${p.unit || 'Cái'}`)
+                              .join(', ')
+                            : totalPhysical > 0
+                              ? `${item.product.name}: ${totalPhysical} ${item.product.unit || 'Cái'}`
+                              : 'Ô Trống';
+
+                        rk.customBins[matchedKey] = {
+                          ...cfg,
+                          totalPhysical,
+                          occupancyPct,
+                          products: prods,
+                          notes: descNotes,
+                          productName:
+                            prods.map((p: any) => p.productName || p.name).join(', ') ||
+                            (totalPhysical > 0 ? item.product.name : 'Ô Trống'),
+                          sku:
+                            prods.map((p: any) => p.sku || p.productSku).filter(Boolean).join(', ') ||
+                            (totalPhysical > 0 ? item.product.internalSku : ''),
+                        };
+
+                        whChanged = true;
+                      }
+                    });
+                  });
+                });
+              });
+
+              if (whChanged) {
+                saveStoredWarehouses(whs);
+                clearWarehouseBinsCache();
+                window.dispatchEvent(new Event('storage'));
+                upsertWarehouseToApi(targetWh).catch((e: any) =>
+                  console.warn('Lỗi lưu CSDL kho sau kiểm kê:', e)
+                );
+              }
+            }
+          }
+        }
+      } catch (errSync) {
+        console.warn('Lỗi cập nhật ô kệ sau kiểm kê:', errSync);
+      }
+
       showSuccess(`Đã lưu thành công phiếu kiểm kê ${created.stocktakeNo || ''}!`);
 
       if (isPrint) {
@@ -956,17 +1522,28 @@ export default function CreateStocktakeOrderPage({
     }
   };
 
-  // Filter products for quick search dropdown
+  // Filter products for quick search dropdown (prioritize products with stock in selected warehouse)
   const filteredProducts = useMemo(() => {
     const kw = productSearch.trim().toLowerCase();
-    if (!kw) return products;
-    return products.filter((p) => {
-      const matchCode =
-        p.internalSku?.toLowerCase().includes(kw) || p.supplierBarcode?.toLowerCase().includes(kw);
-      const matchName = p.name?.toLowerCase().includes(kw);
-      return matchCode || matchName;
+    const baseList = !kw
+      ? products
+      : products.filter((p) => {
+        const matchCode =
+          p.internalSku?.toLowerCase().includes(kw) || p.supplierBarcode?.toLowerCase().includes(kw);
+        const matchName = p.name?.toLowerCase().includes(kw);
+        return matchCode || matchName;
+      });
+
+    if (!locationCode) return baseList;
+
+    return [...baseList].sort((a, b) => {
+      const stockA = getProductWarehouseStock(a, locationCode);
+      const stockB = getProductWarehouseStock(b, locationCode);
+      if (stockA > 0 && stockB <= 0) return -1;
+      if (stockA <= 0 && stockB > 0) return 1;
+      return 0;
     });
-  }, [products, productSearch]);
+  }, [products, productSearch, locationCode]);
 
   // Overall Statistics Aggregated Across Products & Zones
   const totalSystemQty = items.reduce(
@@ -985,11 +1562,10 @@ export default function CreateStocktakeOrderPage({
       {toast && (
         <div className="fixed top-20 right-6 z-[99999] pointer-events-none transition-all duration-300">
           <div
-            className={`pointer-events-auto flex items-center gap-3 rounded-2xl px-5 py-3.5 shadow-lg border transition-all animate-in slide-in-from-top-4 duration-200 ${
-              toast.type === 'error'
+            className={`pointer-events-auto flex items-center gap-3 rounded-2xl px-5 py-3.5 shadow-lg border transition-all animate-in slide-in-from-top-4 duration-200 ${toast.type === 'error'
                 ? 'bg-red-50 text-red-600 border-red-200'
                 : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-            }`}
+              }`}
           >
             {toast.type === 'error' ? (
               <XCircle size={20} className="shrink-0 text-red-600" />
@@ -1196,8 +1772,8 @@ export default function CreateStocktakeOrderPage({
                 {selectedWh && isWhFrozen
                   ? `[${selectedWh.code}] ${selectedWh.name}`
                   : frozenWarehouses.length > 0
-                  ? '— Chọn kho kiểm kê —'
-                  : '— Chưa có kho nào đóng băng —'}
+                    ? '— Chọn kho kiểm kê —'
+                    : '— Chưa có kho nào đóng băng —'}
               </span>
               <ChevronDown className={`h-4.5 w-4.5 text-slate-500 transition-transform duration-200 shrink-0 ${whDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
@@ -1214,11 +1790,10 @@ export default function CreateStocktakeOrderPage({
                           setLocationCode(wh.code);
                           setWhDropdownOpen(false);
                         }}
-                        className={`flex items-center justify-between rounded-lg px-3.5 py-2.5 text-xs font-bold cursor-pointer transition ${
-                          locationCode === wh.code
+                        className={`flex items-center justify-between rounded-lg px-3.5 py-2.5 text-xs font-bold cursor-pointer transition ${locationCode === wh.code
                             ? 'bg-cyan-50 text-cyan-900 font-extrabold'
                             : 'text-slate-700 hover:bg-slate-100 hover:text-cyan-800'
-                        }`}
+                          }`}
                       >
                         <span>[{wh.code}] {wh.name}</span>
                         {locationCode === wh.code && <Check className="h-3.5 w-3.5 text-cyan-600 shrink-0" />}
@@ -1372,7 +1947,7 @@ export default function CreateStocktakeOrderPage({
                       onClick={() => setShowDropdown(false)}
                       className="text-red-500 hover:text-red-700 font-extrabold cursor-pointer"
                     >
-                      ✕ Đóng
+                      Đóng
                     </button>
                   </div>
                 </div>
@@ -1411,161 +1986,176 @@ export default function CreateStocktakeOrderPage({
                 ) : (
                   items.map((item, pIdx) => {
                     const zoneCount = item.zones.length;
+                    const prodTotalSys = item.zones.reduce((sum, z) => sum + (z.systemQty || 0), 0);
+                    const prodTotalCounted = item.zones.reduce((sum, z) => sum + Number(z.countedQty || 0), 0);
+                    const prodTotalDiff = prodTotalCounted - prodTotalSys;
+                    const productRowSpan = zoneCount > 1 ? zoneCount + 1 : zoneCount;
 
-                    return item.zones.map((zone, zIdx) => {
-                      const isFirstZone = zIdx === 0;
-                      const isLastZoneInProd = zIdx === zoneCount - 1;
-                      const zDiff = zone.countedQty - (zone.systemQty || 0);
-                      const isEven = (pIdx + zIdx) % 2 === 1;
+                    return (
+                      <React.Fragment key={item.product.id || `prod-${pIdx}`}>
+                        {item.zones.map((zone, zIdx) => {
+                          const isFirstZone = zIdx === 0;
+                          const isLastZoneInProd = zIdx === zoneCount - 1;
+                          const zDiff = (zone.countedQty ?? 0) - (zone.systemQty ?? 0);
+                          const isEven = (pIdx + zIdx) % 2 === 1;
 
-                      return (
-                        <tr
-                          key={`${item.product.id}-${zone.zoneCode}-${zIdx}`}
-                          className={`${isEven ? 'bg-cyan-50/20' : 'bg-white'} hover:bg-cyan-50/80 transition-colors ${
-                            isLastZoneInProd ? 'border-b-2 border-slate-300' : 'border-b border-slate-200'
-                          }`}
-                        >
-                          {/* ══ ROWSPAN MERGED CELL 1: STT ══ */}
-                          {isFirstZone && (
-                            <td
-                              rowSpan={zoneCount}
-                              className="p-2 text-center font-extrabold text-slate-600 border-r border-slate-200 align-middle"
-                            >
-                              {pIdx + 1}.
-                            </td>
-                          )}
-
-                          {/* ══ ROWSPAN MERGED CELL 2: MÃ HÀNG ══ */}
-                          {isFirstZone && (
-                            <td
-                              rowSpan={zoneCount}
-                              className="p-1.5 border-r border-slate-200 align-middle"
-                            >
-                              <div className="h-9 px-2.5 flex items-center justify-center rounded-xl border border-slate-300 bg-white font-black text-cyan-800 text-xs font-mono shadow-2xs">
-                                {item.product.internalSku}
-                              </div>
-                            </td>
-                          )}
-
-                          {/* ══ ROWSPAN MERGED CELL 3: TÊN HÀNG HÓA ══ */}
-                          {isFirstZone && (
-                            <td
-                              rowSpan={zoneCount}
-                              className="p-1.5 border-r border-slate-200 align-middle"
-                            >
-                              <div className="h-9 px-3 flex items-center justify-between gap-2 rounded-xl border border-slate-300 bg-white font-bold text-slate-800 text-xs shadow-2xs">
-                                <span className="truncate" title={item.product.name}>
-                                  {item.product.name}
-                                </span>
-                                <span className="shrink-0 text-[10px] font-black text-cyan-700 bg-cyan-100/80 px-2 py-0.5 rounded-full">
-                                  {zoneCount} khu
-                                </span>
-                              </div>
-                            </td>
-                          )}
-
-                          {/* ══ ROWSPAN MERGED CELL 4: ĐVT ══ */}
-                          {isFirstZone && (
-                            <td
-                              rowSpan={zoneCount}
-                              className="p-1.5 border-r border-slate-200 align-middle"
-                            >
-                              <div className="h-9 w-full flex items-center justify-center rounded-xl border border-slate-300 bg-white font-bold text-slate-700 text-xs shadow-2xs">
-                                {item.product.unit || 'Cái'}
-                              </div>
-                            </td>
-                          )}
-
-                          {/* ══ CELL 5: PHÂN KHU & Ô KỆ KIỂM KÊ (Chuẩn mẫu Inbound) ══ */}
-                          <td className="p-1.5 border-r border-slate-200">
-                            <div className="flex items-center gap-1.5">
-                              <select
-                                value={zone.zoneCode}
-                                onChange={(e) => handleUpdateZoneCode(pIdx, zIdx, e.target.value)}
-                                className="h-9 flex-1 rounded-xl border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer shadow-2xs"
-                              >
-                                {activeSubWarehouses.map((sub: any) => (
-                                  <option key={sub.id || sub.code} value={sub.code || sub.id}>
-                                    [{sub.code || sub.id}] {sub.name}
-                                  </option>
-                                ))}
-                              </select>
-                              <button
-                                type="button"
-                                onClick={() => setSlottingTarget({ product: item.product, pIdx, zIdx })}
-                                className={`h-9 px-2.5 flex items-center gap-1.5 rounded-xl border transition-all cursor-pointer shadow-2xs shrink-0 ${
-                                  zone.assignedBins && zone.assignedBins.length > 0
-                                    ? 'border-emerald-500 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-bold'
-                                    : 'border-cyan-300 bg-white text-cyan-800 hover:bg-cyan-50 font-bold'
+                          return (
+                            <tr
+                              key={`${item.product.id}-${zone.zoneCode}-${zone.binCode || zIdx}`}
+                              className={`${isEven ? 'bg-cyan-50/20' : 'bg-white'} hover:bg-cyan-50/80 transition-colors ${isLastZoneInProd && zoneCount === 1 ? 'border-b-2 border-slate-300' : 'border-b border-slate-200'
                                 }`}
-                                title="Xem sơ đồ & chọn ô kệ"
-                              >
-                                <span className="text-xs">📍</span>
-                                <span className="max-w-[85px] truncate text-xs">
-                                  {zone.locationBin && zone.locationBin !== 'Chưa xếp ô'
-                                    ? zone.locationBin
-                                    : zone.assignedBins && zone.assignedBins.length > 0
-                                    ? zone.assignedBins.join(', ')
-                                    : 'Chọn ô'}
-                                </span>
-                              </button>
-                            </div>
-                          </td>
-
-                          {/* ══ CELL 6: SỐ TỒN KHO ══ */}
-                          <td className="p-1.5 border-r border-slate-200">
-                            <div className="h-9 w-full flex items-center justify-center rounded-xl border border-slate-200 bg-slate-50/80 font-black text-slate-800 font-mono text-xs shadow-2xs">
-                              {(zone.systemQty || 0).toLocaleString('vi-VN')}
-                            </div>
-                          </td>
-
-
-                          {/* ══ CELL 9: GHI CHÚ ══ */}
-                          <td className="p-1.5 border-r border-slate-200">
-                            <input
-                              type="text"
-                              value={zone.note || ''}
-                              onChange={(e) => handleUpdateZoneNote(pIdx, zIdx, e.target.value)}
-                              placeholder="Ghi chú..."
-                              className="h-9 w-full px-2.5 rounded-xl border border-slate-300 bg-white font-medium text-slate-700 outline-none focus:border-cyan-600 text-xs shadow-2xs"
-                            />
-                          </td>
-
-                          {/* ══ CELL 10: THAO TÁC (Chỉ nút Xóa) ══ */}
-                          <td className="p-1.5 text-center">
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveZoneRow(pIdx, zIdx)}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-rose-300 bg-white text-rose-500 shadow-2xs hover:bg-rose-500 hover:text-white hover:border-rose-500 transition cursor-pointer"
-                              title="Xóa hàng kiểm kê này"
                             >
-                              <Trash2 size={16} strokeWidth={2} />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    });
+                              {/* ══ ROWSPAN MERGED CELL 1: STT ══ */}
+                              {isFirstZone && (
+                                <td
+                                  rowSpan={productRowSpan}
+                                  className="p-2 text-center font-extrabold text-slate-600 border-r border-slate-200 align-middle bg-inherit"
+                                >
+                                  {pIdx + 1}.
+                                </td>
+                              )}
+
+                              {/* ══ ROWSPAN MERGED CELL 2: MÃ HÀNG ══ */}
+                              {isFirstZone && (
+                                <td
+                                  rowSpan={productRowSpan}
+                                  className="p-1.5 border-r border-slate-200 align-middle bg-inherit"
+                                >
+                                  <div className="h-9 px-2.5 flex items-center justify-center rounded-xl border border-slate-300 bg-white font-black text-cyan-800 text-xs font-mono shadow-2xs">
+                                    {item.product.internalSku}
+                                  </div>
+                                </td>
+                              )}
+
+                              {/* ══ ROWSPAN MERGED CELL 3: TÊN HÀNG HÓA ══ */}
+                              {isFirstZone && (
+                                <td
+                                  rowSpan={productRowSpan}
+                                  className="p-1.5 border-r border-slate-200 align-middle bg-inherit"
+                                >
+                                  <div className="h-9 px-3 flex items-center justify-between gap-2 rounded-xl border border-slate-300 bg-white font-bold text-slate-800 text-xs shadow-2xs">
+                                    <span className="truncate" title={item.product.name}>
+                                      {item.product.name}
+                                    </span>
+                                    <span className="shrink-0 text-[10px] font-black text-cyan-700 bg-cyan-100/80 px-2 py-0.5 rounded-full">
+                                      {zoneCount} kệ/ô
+                                    </span>
+                                  </div>
+                                </td>
+                              )}
+
+                              {/* ══ ROWSPAN MERGED CELL 4: ĐVT ══ */}
+                              {isFirstZone && (
+                                <td
+                                  rowSpan={productRowSpan}
+                                  className="p-1.5 border-r border-slate-200 align-middle bg-inherit"
+                                >
+                                  <div className="h-9 w-full flex items-center justify-center rounded-xl border border-slate-300 bg-white font-bold text-slate-700 text-xs shadow-2xs">
+                                    {item.product.unit || 'Cái'}
+                                  </div>
+                                </td>
+                              )}
+
+                              {/* ══ CELL 5: PHÂN KHU & Ô KỆ KIỂM KÊ ══ */}
+                              <td className="p-1.5 border-r border-slate-200">
+                                <div className="flex items-center gap-1.5">
+                                  <select
+                                    value={zone.zoneCode}
+                                    onChange={(e) => handleUpdateZoneCode(pIdx, zIdx, e.target.value)}
+                                    className="h-9 flex-1 min-w-[110px] rounded-xl border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer shadow-2xs"
+                                  >
+                                    {activeSubWarehouses.map((sub: any) => (
+                                      <option key={sub.id || sub.code} value={sub.code || sub.id}>
+                                        [{sub.code || sub.id}] {sub.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSlottingTarget({ product: item.product, pIdx, zIdx })}
+                                    className={`h-9 px-3 flex items-center gap-1.5 rounded-xl border transition-all cursor-pointer shadow-2xs shrink-0 whitespace-nowrap ${zone.binCode || (zone.assignedBins && zone.assignedBins.length > 0)
+                                        ? 'border-emerald-500 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-bold'
+                                        : 'border-cyan-300 bg-white text-cyan-800 hover:bg-cyan-50 font-bold'
+                                      }`}
+                                    title="Xem sơ đồ & chọn ô kệ"
+                                  >
+                                    <span className="text-xs font-black">
+                                      {zone.locationBin && zone.locationBin !== 'Chưa xếp ô'
+                                        ? zone.locationBin
+                                        : zone.binCode
+                                          ? `Ô ${zone.binCode}`
+                                          : zone.assignedBins && zone.assignedBins.length > 0
+                                            ? zone.assignedBins.join(', ')
+                                            : 'Chọn ô'}
+                                    </span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddZoneToProduct(pIdx)}
+                                    className="h-9 w-8 flex items-center justify-center rounded-xl border border-cyan-300 bg-cyan-50 text-cyan-800 hover:bg-cyan-100 transition cursor-pointer shrink-0 shadow-2xs"
+                                    title="Thêm vị trí kệ lưu trữ khác cho sản phẩm này"
+                                  >
+                                    <Plus size={14} strokeWidth={2.5} />
+                                  </button>
+                                </div>
+                              </td>
+
+                              {/* ══ CELL 6: SỐ TỒN KHO TRÊN KỆ ══ */}
+                              <td className="p-1.5 border-r border-slate-200">
+                                <div className="h-9 w-full flex items-center justify-center rounded-xl border border-slate-200 bg-slate-50/80 font-black text-slate-800 font-mono text-xs shadow-2xs">
+                                  {(zone.systemQty || 0).toLocaleString('vi-VN')}
+                                </div>
+                              </td>
+
+
+                              {/* ══ CELL 9: GHI CHÚ KỆ ══ */}
+                              <td className="p-1.5 border-r border-slate-200">
+                                <input
+                                  type="text"
+                                  value={zone.note || ''}
+                                  onChange={(e) => handleUpdateZoneNote(pIdx, zIdx, e.target.value)}
+                                  placeholder="Ghi chú..."
+                                  className="h-9 w-full px-2.5 rounded-xl border border-slate-300 bg-white font-medium text-slate-700 outline-none focus:border-cyan-600 text-xs shadow-2xs"
+                                />
+                              </td>
+
+                              {/* ══ CELL 10: THAO TÁC (Chỉ nút Xóa) ══ */}
+                              <td className="p-1.5 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveZoneRow(pIdx, zIdx)}
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-rose-300 bg-white text-rose-500 shadow-2xs hover:bg-rose-500 hover:text-white hover:border-rose-500 transition cursor-pointer"
+                                  title="Xóa hàng kiểm kê này"
+                                >
+                                  <Trash2 size={16} strokeWidth={2} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        });
                   })
                 )}
-              </tbody>
+                      </tbody>
 
-              {/* TABLE FOOTER SUMMARY ROW */}
-              {items.length > 0 && (
-                <tfoot className="bg-slate-100 font-extrabold text-slate-800 border-t-2 border-slate-200 uppercase text-xs sticky bottom-0 z-10">
-                  <tr>
-                    <td colSpan={5} className="p-2.5 text-right font-black text-slate-800 border-r border-slate-200">
-                      TỔNG CỘNG ({items.length} SẢN PHẨM - {items.reduce((s, i) => s + i.zones.length, 0)} PHÂN KHU):
-                    </td>
-                    <td className="p-1.5 text-center border-r border-slate-200">
-                      <div className="h-9 w-full flex items-center justify-center rounded-xl border border-cyan-300 bg-cyan-100/60 font-black text-cyan-900 font-mono text-xs shadow-2xs">
-                        {totalSystemQty.toLocaleString('vi-VN')}
-                      </div>
-                    </td>
-                    <td className="p-2 border-r border-slate-200 text-slate-400 font-medium italic text-center">—</td>
-                    <td className="p-2 text-center text-slate-400 font-medium italic">—</td>
-                  </tr>
-                </tfoot>
-              )}
+              {/* TABLE FOOTER SUMMARY ROW */ }
+                    {
+                      items.length > 0 && (
+                        <tfoot className="bg-slate-100 font-extrabold text-slate-800 border-t-2 border-slate-200 uppercase text-xs sticky bottom-0 z-10">
+                          <tr>
+                            <td colSpan={5} className="p-2.5 text-right font-black text-slate-800 border-r border-slate-200">
+                              TỔNG CỘNG ({items.length} SẢN PHẨM - {items.reduce((s, i) => s + i.zones.length, 0)} PHÂN KHU):
+                            </td>
+                            <td className="p-1.5 text-center border-r border-slate-200">
+                              <div className="h-9 w-full flex items-center justify-center rounded-xl border border-cyan-300 bg-cyan-100/60 font-black text-cyan-900 font-mono text-xs shadow-2xs">
+                                {totalSystemQty.toLocaleString('vi-VN')}
+                              </div>
+                            </td>
+                            <td className="p-2 border-r border-slate-200 text-slate-400 font-medium italic text-center">—</td>
+                            <td className="p-2 text-center text-slate-400 font-medium italic">—</td>
+                          </tr>
+                        </tfoot>
+                      )
+                    }
             </table>
           </div>
         </div>
@@ -1676,8 +2266,8 @@ export default function CreateStocktakeOrderPage({
                 z.assignedBins && z.assignedBins.length > 0
                   ? z.assignedBins
                   : z.locationBin
-                  ? z.locationBin.split(',').map((s) => s.trim())
-                  : []
+                    ? z.locationBin.split(',').map((s) => s.trim())
+                    : []
               );
               const uniqueBins = Array.from(new Set(allBins.filter(Boolean)));
               return {
@@ -1700,17 +2290,37 @@ export default function CreateStocktakeOrderPage({
                   if (match && match.assignedBins) {
                     const updatedZones = it.zones.map((z, zIdx) => {
                       if (slottingTarget && slottingTarget.pIdx === pIdx && slottingTarget.zIdx === zIdx) {
+                        const firstBin = match.assignedBins[0] || '';
+                        const cleanBin = firstBin.split('(')[0].trim();
+                        const shortBin = (cleanBin.split('-').pop() || cleanBin).toUpperCase().trim();
+                        const rkPrefix = cleanBin.includes('-') ? cleanBin.split('-')[0].toUpperCase() : z.rackCode || '';
+                        const locLabel = rkPrefix ? `Kệ ${rkPrefix} - Ô ${shortBin}` : (shortBin ? `Ô ${shortBin}` : match.locationBin || '');
+
                         return {
                           ...z,
-                          locationBin: match.locationBin || match.assignedBins.join(', '),
+                          rackCode: rkPrefix,
+                          binCode: shortBin,
+                          fullBinCode: cleanBin,
+                          locationBin: locLabel || match.locationBin || match.assignedBins.join(', '),
                           assignedBins: match.assignedBins,
+                          note: z.note || `[Kệ: ${locLabel}]`,
                         };
                       }
                       if (slottingTarget && slottingTarget.pIdx === pIdx && zIdx === 0 && (!z.assignedBins || z.assignedBins.length === 0)) {
+                        const firstBin = match.assignedBins[0] || '';
+                        const cleanBin = firstBin.split('(')[0].trim();
+                        const shortBin = (cleanBin.split('-').pop() || cleanBin).toUpperCase().trim();
+                        const rkPrefix = cleanBin.includes('-') ? cleanBin.split('-')[0].toUpperCase() : z.rackCode || '';
+                        const locLabel = rkPrefix ? `Kệ ${rkPrefix} - Ô ${shortBin}` : (shortBin ? `Ô ${shortBin}` : match.locationBin || '');
+
                         return {
                           ...z,
-                          locationBin: match.locationBin || match.assignedBins.join(', '),
+                          rackCode: rkPrefix,
+                          binCode: shortBin,
+                          fullBinCode: cleanBin,
+                          locationBin: locLabel || match.locationBin || match.assignedBins.join(', '),
                           assignedBins: match.assignedBins,
+                          note: z.note || `[Kệ: ${locLabel}]`,
                         };
                       }
                       return z;
@@ -1775,11 +2385,10 @@ export default function CreateStocktakeOrderPage({
                       onClick={async () => {
                         await handleToggleFreezeSpecificWh(wh);
                       }}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-bold transition active:scale-95 cursor-pointer disabled:opacity-50 ${
-                        wh.isFrozen
+                      className={`rounded-lg px-3 py-1.5 text-xs font-bold transition active:scale-95 cursor-pointer disabled:opacity-50 ${wh.isFrozen
                           ? 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
                           : 'bg-cyan-600 text-white hover:bg-cyan-700'
-                      }`}
+                        }`}
                     >
                       {wh.isFrozen ? 'Mở khóa' : 'Đóng băng ngay'}
                     </button>

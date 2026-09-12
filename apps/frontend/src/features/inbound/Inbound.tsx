@@ -584,48 +584,59 @@ function getLocalDateString(d: Date = new Date()): string {
           if (isReturnSupplier) {
             const returnList = list.filter((item: any) => {
               const code = String(item.orderNo || item.receiptNo || item.orderCode || '').toUpperCase();
-              if (code.startsWith('PNK')) return false;
+              if (code.startsWith('PNK') || code.startsWith('PXH') || code.startsWith('CK') || code.startsWith('PCK')) return false;
               return (
                 item.orderType === 'return-supplier' ||
                 item.receiptType === 'return-supplier' ||
+                item.orderType === 'return' ||
                 code.startsWith('XNCC') ||
-                code.startsWith('PXTR')
+                code.startsWith('PXTR') ||
+                code.startsWith('XTR') ||
+                code.startsWith('TR') ||
+                code.includes('XNCC') ||
+                code.includes('XTR') ||
+                code.includes('NCC') ||
+                item.partnerLabel === 'Nhà cung cấp' ||
+                item.partnerType === 'supplier'
               );
             });
 
-            formatted = returnList.map((item: any, idx: number) => ({
-              id: String(item.id || `ret_${idx}`),
-              receiptNo: item.orderNo || item.receiptNo || `XNCC-${2000 + idx}`,
-              supplier: item.customer || item.supplier || item.supplierName || 'Nhà cung cấp',
-              supplierId: item.customerId || item.supplierId,
-              supplierPhone: item.customerPhone || item.supplierPhone || '',
-              supplierAddress: item.customerAddress || item.supplierAddress || '',
-              warehouseCode: item.branchCode || item.warehouseCode || 'KHO-TONG',
-              employeeName: item.employeeName || item.creatorName || currentUserName,
-              orderDate: item.orderDate || (item.createdAt ? new Date(item.createdAt).toLocaleString('vi-VN') : new Date().toLocaleString('vi-VN')),
-              expectedDate: item.expectedDate || '',
-              status: item.status || 'completed',
-              subtotal: Number(item.subtotal || item.totalAmount || 0),
-              discount: Number(item.discount || 0),
-              vatRate: Number(item.vatRate || 0),
-              vatAmount: Number(item.vatAmount || 0),
-              totalAmount: Number(item.totalAmount || 0),
-              amountPaid: Number(item.amountPaid !== undefined ? item.amountPaid : item.totalAmount || 0),
-              itemsCount: item.details?.length || 1,
-              totalQty: item.details?.reduce((s: number, d: any) => s + Number(d.qty || 1), 0) || 1,
-              details: (item.details || []).map((d: any) => ({
-                id: d.id || d.rowId,
-                productId: d.productId,
-                productSku: d.productSku || d.sku || 'SKU',
-                productName: d.productName || d.name || 'Sản phẩm',
-                unit: d.unit || 'Cái',
-                qty: Number(d.qty || 1),
-                price: Number(d.price || d.unitPrice || 0),
-                discountPercent: Number(d.discountPercent || 0),
-                vatPercent: Number(d.vatPercent || 0),
-                totalLineAmount: Number(d.totalAmount || d.totalLineAmount || 0),
-              })),
-            }));
+            formatted = returnList.map((item: any, idx: number) => {
+              const rawDetails = Array.isArray(item.details) ? item.details : (Array.isArray(item.items) ? item.items : []);
+              return {
+                id: String(item.id || `ret_${idx}`),
+                receiptNo: item.orderNo || item.receiptNo || `XNCC-${2000 + idx}`,
+                supplier: item.supplier || item.supplierName || item.customer || item.customerName || 'Nhà cung cấp',
+                supplierId: item.customerId || item.supplierId,
+                supplierPhone: item.customerPhone || item.supplierPhone || '',
+                supplierAddress: item.customerAddress || item.supplierAddress || '',
+                warehouseCode: item.branchCode || item.warehouseCode || 'KHO-TONG',
+                employeeName: item.employeeName || item.creatorName || currentUserName,
+                orderDate: item.orderDate || (item.createdAt ? new Date(item.createdAt).toLocaleString('vi-VN') : new Date().toLocaleString('vi-VN')),
+                expectedDate: item.expectedDate || '',
+                status: item.status || 'completed',
+                subtotal: Number(item.subtotal || item.totalAmount || 0),
+                discount: Number(item.discount || 0),
+                vatRate: Number(item.vatRate || 0),
+                vatAmount: Number(item.vatAmount || 0),
+                totalAmount: Number(item.totalAmount || 0),
+                amountPaid: Number(item.amountPaid !== undefined ? item.amountPaid : item.totalAmount || 0),
+                itemsCount: rawDetails.length || 1,
+                totalQty: rawDetails.reduce((s: number, d: any) => s + Number(d.qty || d.quantity || 1), 0) || 1,
+                details: rawDetails.map((d: any) => ({
+                  id: d.id || d.rowId,
+                  productId: d.productId || d.product?.id,
+                  productSku: d.productSku || d.sku || d.product?.internalSku || d.product?.sku || 'SKU',
+                  productName: d.productName || d.name || d.product?.name || 'Sản phẩm',
+                  unit: d.unit || d.product?.unit || 'Cái',
+                  qty: Number(d.qty || d.quantity || 1),
+                  price: Number(d.price || d.unitPrice || 0),
+                  discountPercent: Number(d.discountPercent || 0),
+                  vatPercent: Number(d.vatPercent || 0),
+                  totalLineAmount: Number(d.totalAmount || d.totalLineAmount || (Number(d.qty || d.quantity || 1) * Number(d.price || d.unitPrice || 0)) || 0),
+                })),
+              };
+            });
           } else {
             formatted = list.map((item: any, idx: number) => ({
               id: String(item.id || idx),
@@ -671,45 +682,59 @@ function getLocalDateString(d: Date = new Date()): string {
           if (storedOutboundStr) {
             const storedOutbound = JSON.parse(storedOutboundStr);
             if (Array.isArray(storedOutbound)) {
-              const returnOrders = storedOutbound.filter((ord: any) =>
-                String(ord.orderNo || ord.orderCode || '').startsWith('XNCC') ||
-                ord.receiptType === 'return-supplier' ||
-                ord.orderType === 'return-supplier' ||
-                ord.partnerLabel === 'Nhà cung cấp'
-              );
+              const returnOrders = storedOutbound.filter((ord: any) => {
+                const code = String(ord.orderNo || ord.orderCode || ord.receiptNo || '').toUpperCase();
+                if (code.startsWith('PNK') || code.startsWith('PXH') || code.startsWith('CK') || code.startsWith('PCK')) return false;
+                return (
+                  code.startsWith('XNCC') ||
+                  code.startsWith('PXTR') ||
+                  code.startsWith('XTR') ||
+                  code.startsWith('TR') ||
+                  code.includes('XNCC') ||
+                  code.includes('XTR') ||
+                  code.includes('NCC') ||
+                  ord.receiptType === 'return-supplier' ||
+                  ord.orderType === 'return-supplier' ||
+                  ord.orderType === 'return' ||
+                  ord.partnerLabel === 'Nhà cung cấp' ||
+                  ord.partnerType === 'supplier'
+                );
+              });
               returnOrders.forEach((item: any, idx: number) => {
-                if (!formatted.some(f => f.receiptNo === (item.orderNo || item.orderCode))) {
+                const rNo = item.orderNo || item.orderCode || item.receiptNo || `XNCC-${1000 + idx}`;
+                if (!formatted.some(f => f.receiptNo === rNo || f.id === String(item.id))) {
+                  const rawDetails = Array.isArray(item.details) ? item.details : (Array.isArray(item.items) ? item.items : []);
                   formatted.unshift({
                     id: String(item.id || `xncc_${idx}`),
-                    receiptNo: item.orderNo || item.orderCode || `XNCC-${1000 + idx}`,
-                    supplier: item.customer || item.supplier || 'Nhà cung cấp',
+                    receiptNo: rNo,
+                    supplier: item.supplier || item.supplierName || item.customer || item.customerName || 'Nhà cung cấp',
                     supplierId: item.customerId || item.supplierId,
                     supplierPhone: item.customerPhone || item.supplierPhone || '',
                     supplierAddress: item.customerAddress || item.supplierAddress || '',
                     warehouseCode: item.branchCode || item.warehouseCode || 'KHO-TONG',
-                    employeeName: item.employeeName || currentUserName,
-                    orderDate: item.orderDate || new Date().toLocaleString('vi-VN'),
+                    employeeName: item.employeeName || item.creatorName || currentUserName,
+                    orderDate: item.orderDate || (item.createdAt ? new Date(item.createdAt).toLocaleString('vi-VN') : new Date().toLocaleString('vi-VN')),
                     expectedDate: item.expectedDate || '',
-                    status: 'completed',
+                    status: item.status || 'completed',
                     subtotal: Number(item.subtotal || item.totalAmount || 0),
                     discount: Number(item.discount || 0),
                     vatRate: Number(item.vatRate || 0),
                     vatAmount: Number(item.vatAmount || 0),
                     totalAmount: Number(item.totalAmount || item.amountPaid || 0),
                     amountPaid: Number(item.amountPaid || item.totalAmount || 0),
-                    itemsCount: item.details?.length || 1,
-                    totalQty: item.details?.reduce((s: number, d: any) => s + (Number(d.qty || 1)), 0) || 1,
-                    details: (item.details || []).map((d: any) => ({
+                    itemsCount: rawDetails.length || 1,
+                    totalQty: rawDetails.reduce((s: number, d: any) => s + (Number(d.qty || d.quantity || 1)), 0) || 1,
+                    details: rawDetails.map((d: any) => ({
                       id: d.rowId || d.id,
-                      productId: d.productId,
-                      productSku: d.productSku || 'SKU',
-                      productName: d.productName || 'Sản phẩm',
-                      unit: d.unit || 'Cái',
-                      qty: Number(d.qty || 1),
-                      price: Number(d.price || 0),
+                      productId: d.productId || d.product?.id,
+                      productSku: d.productSku || d.sku || d.product?.internalSku || d.product?.sku || 'SKU',
+                      productName: d.productName || d.name || d.product?.name || 'Sản phẩm',
+                      unit: d.unit || d.product?.unit || 'Cái',
+                      qty: Number(d.qty || d.quantity || 1),
+                      price: Number(d.price || d.unitPrice || 0),
                       discountPercent: Number(d.discountPercent || 0),
                       vatPercent: Number(d.vatPercent || 0),
-                      totalLineAmount: Number(d.totalAmount || 0),
+                      totalLineAmount: Number(d.totalAmount || d.totalLineAmount || (Number(d.qty || d.quantity || 1) * Number(d.price || d.unitPrice || 0)) || 0),
                     })),
                   });
                 }
@@ -793,6 +818,18 @@ function getLocalDateString(d: Date = new Date()): string {
   useEffect(() => {
     loadData();
   }, [loadData, showFormModal]);
+
+  useEffect(() => {
+    const handleOrderCreated = () => {
+      loadData();
+    };
+    window.addEventListener('outbound-order-created', handleOrderCreated);
+    window.addEventListener('storage', handleOrderCreated);
+    return () => {
+      window.removeEventListener('outbound-order-created', handleOrderCreated);
+      window.removeEventListener('storage', handleOrderCreated);
+    };
+  }, [loadData]);
 
   // Click outside to close dropdowns
   useEffect(() => {

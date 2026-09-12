@@ -39,6 +39,7 @@ export type BinOccupiedInfo = {
   unit?: string;
   occupancyPct?: number;
   isOutbound?: boolean;
+  isDisposal?: boolean;
 };
 
 export type BinGoodsDetail = {
@@ -53,6 +54,7 @@ export type BinGoodsDetail = {
   unit: string;
   occupancyPct?: number;
   isOutbound?: boolean;
+  isDisposal?: boolean;
 };
 
 export interface WarehouseSlottingGridProps {
@@ -172,9 +174,12 @@ export function computeActiveStoredGoods(
   }>();
 
   valid.forEach((item) => {
-    const pSku = item.sku || 'SKU-001';
+    const pSku = (item.sku || '').trim().toUpperCase();
+    const normStr = (s: string) =>
+      s ? s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().trim() : '';
     const pName = item.productName || 'Sản phẩm';
-    const key = `${pSku}___${pName}`;
+    const normName = normStr(pName);
+    const key = pSku ? pSku : `${pSku}___${normName}`;
     const qty = Number(item.quantity || 0);
     const isOut = item.isOutbound === true || qty < 0;
 
@@ -550,6 +555,7 @@ export async function fetchWarehouseOccupiedBins(
         unit: updatedInfo.unit!,
         occupancyPct: extractedPct !== undefined ? extractedPct : (info.occupancyPct !== undefined ? info.occupancyPct : 100),
         isOutbound: updatedInfo.isOutbound,
+        isDisposal: updatedInfo.isDisposal,
       };
 
       const appendGoods = (key: string) => {
@@ -560,6 +566,7 @@ export async function fetchWarehouseOccupiedBins(
           (x) =>
             x.sku === detail.sku &&
             x.productName === detail.productName &&
+            Boolean(x.isOutbound) === Boolean(detail.isOutbound) &&
             (x.orderCode === detail.orderCode || (!x.orderCode && !detail.orderCode))
         );
         if (existingIdx >= 0) {
@@ -941,18 +948,33 @@ export async function fetchWarehouseOccupiedBins(
             if (pctMatch) {
               itemPct = Number(pctMatch[2]);
             }
+            const orderCodeUpper = (orderCode || '').toUpperCase();
+            const isDisposal = ord.orderType === 'disposal' || orderCodeUpper.startsWith('PXH') || orderCodeUpper.includes('HUY') || orderCodeUpper.includes('HỦY');
+            const isTransfer = ord.orderType === 'transfer' || orderCodeUpper.startsWith('CK') || orderCodeUpper.startsWith('PCK');
+            const isRetail = ord.orderType === 'retail' || ord.orderType === 'RETAIL' || orderCodeUpper.startsWith('XBL');
+            const isReturn = ord.orderType === 'return-supplier' || ord.orderType === 'return' || orderCodeUpper.startsWith('XTR');
+
+            const partnerName = isDisposal
+              ? (ord.description || 'Xuất hủy nội bộ')
+              : isTransfer
+                ? (ord.customerName || ord.receiver || 'Chuyển kho nội bộ')
+                : isReturn
+                  ? (ord.customerName || ord.supplierName || 'Nhà cung cấp')
+                  : (ord.customerName || ord.customer || ord.receiver || supplierName || 'Khách hàng');
+
             const info: BinOccupiedInfo = {
               totalPhysical: exportQty,
               allocated: 0,
               productsCount: 1,
               productName: pName,
               sku: pSku,
-              supplierName,
+              supplierName: partnerName,
               inboundDate: outboundDate,
               orderCode,
               unit: pUnit,
               occupancyPct: itemPct,
               isOutbound: true,
+              isDisposal,
             };
             addBinOccupied(bCode, info);
           });
@@ -1110,7 +1132,9 @@ export async function fetchWarehouseOccupiedBins(
                           });
                         }
                         if (goodsList.length > 0) {
-                          gMap.set(k, goodsList);
+                          const existingList = gMap.get(k) || [];
+                          const outboundEntries = existingList.filter((x) => x.isOutbound === true || Number(x.quantity || 0) < 0);
+                          gMap.set(k, [...goodsList, ...outboundEntries]);
                         }
                       });
                     }
@@ -1137,7 +1161,7 @@ export async function fetchWarehouseOccupiedBins(
             occupancyPct: 0,
           });
           dMap.delete(binKey);
-          gMap.set(binKey, []);
+          // Giữ rawGoods trong gMap để phục vụ hiển thị đầy đủ nhật ký lịch sử giao dịch xuất nhập ô kệ
         } else {
           map.set(binKey, {
             ...info,
@@ -1146,7 +1170,7 @@ export async function fetchWarehouseOccupiedBins(
           });
           if (activeGoods.length > 0) {
             dMap.set(binKey, activeGoods[0]);
-            gMap.set(binKey, activeGoods);
+            // Giữ lại toàn bộ rawGoods trong gMap (bao gồm cả dòng nhập kho và xuất kho/xuất hủy)
           }
         }
       } else if (info.isOutbound && (info.totalPhysical === 0 || info.occupancyPct === 0)) {
@@ -1687,26 +1711,34 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
       if (!item) return;
       const skuStr = (item.sku || '').trim().toUpperCase();
       const nameStr = (item.productName || '').trim().toLowerCase();
-      const dedupeKey = `${skuStr}___${nameStr}`;
+      const isOut = Boolean(item.isOutbound || Number(item.quantity || 0) < 0);
+      const isDis = Boolean(
+        item.isDisposal ||
+        (item.orderCode && (item.orderCode.startsWith('PXH') || item.orderCode.toUpperCase().includes('HUY') || item.orderCode.toUpperCase().includes('HỦY')))
+      );
+      const oCode = (item.orderCode || '').trim().toUpperCase();
+      const dedupeKey = `${skuStr}___${nameStr}___${isOut ? (isDis ? 'DISPOSAL' : 'OUT') : 'IN'}___${oCode}`;
+
       if (seenProductKeys.has(dedupeKey)) {
-        const existing = resultList.find(x => `${(x.sku || '').trim().toUpperCase()}___${(x.productName || '').trim().toLowerCase()}` === dedupeKey);
+        const existing = resultList.find(x => {
+          const xIsOut = Boolean(x.isOutbound || Number(x.quantity || 0) < 0);
+          const xIsDis = Boolean(
+            x.isDisposal ||
+            (x.orderCode && (x.orderCode.startsWith('PXH') || x.orderCode.toUpperCase().includes('HUY') || x.orderCode.toUpperCase().includes('HỦY')))
+          );
+          const xCode = (x.orderCode || '').trim().toUpperCase();
+          return `${(x.sku || '').trim().toUpperCase()}___${(x.productName || '').trim().toLowerCase()}___${xIsOut ? (xIsDis ? 'DISPOSAL' : 'OUT') : 'IN'}___${xCode}` === dedupeKey;
+        });
         if (existing) {
-          if (item.orderCode && existing.orderCode && (item.orderCode === existing.orderCode || item.orderCode === 'KHO-LUU' || existing.orderCode === 'KHO-LUU')) {
-            existing.quantity = Math.max(existing.quantity || 0, item.quantity || 0);
-            if (item.occupancyPct !== undefined) {
-              existing.occupancyPct = item.occupancyPct;
-            }
-          } else {
-            existing.quantity = (existing.quantity || 0) + (item.quantity || 0);
-            if (item.occupancyPct !== undefined && existing.occupancyPct !== undefined) {
-              existing.occupancyPct = Math.min(100, existing.occupancyPct + item.occupancyPct);
-            }
+          existing.quantity = Math.max(existing.quantity || 0, item.quantity || 0);
+          if (item.occupancyPct !== undefined) {
+            existing.occupancyPct = item.occupancyPct;
           }
         }
         return;
       }
       seenProductKeys.add(dedupeKey);
-      resultList.push({ ...item });
+      resultList.push({ ...item, isDisposal: isDis });
     };
 
     const isMatchBin = (b: string) => {
@@ -3151,10 +3183,10 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                     <tr
                                       key={`inbound-row-${idx}`}
                                       className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition border-l-4 ${isExisting
-                                          ? 'bg-amber-50/30 dark:bg-amber-950/20 border-amber-500'
-                                          : isOtherOrder
-                                            ? 'bg-purple-50/30 dark:bg-purple-950/20 border-purple-500'
-                                            : 'bg-cyan-50/30 dark:bg-cyan-950/20 border-cyan-500'
+                                        ? 'bg-amber-50/30 dark:bg-amber-950/20 border-amber-500'
+                                        : isOtherOrder
+                                          ? 'bg-purple-50/30 dark:bg-purple-950/20 border-purple-500'
+                                          : 'bg-cyan-50/30 dark:bg-cyan-950/20 border-cyan-500'
                                         }`}
                                     >
                                       <td className="p-2.5">
