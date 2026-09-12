@@ -35,7 +35,8 @@ import {
   Eye,
   Calendar,
   Hash,
-  TrendingDown,
+  ArrowDownToLine,
+  Lock,
 } from 'lucide-react';
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
@@ -43,7 +44,23 @@ import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses, build
 import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
 import { readStoredBankAccounts } from '../../finance/pages/BankAccountsPage';
 import { readStoredCurrencies } from '../../products/CurrenciesPage';
-import { SmartSlottingGridModal } from '../../warehouses/components/SmartSlottingGridModal';
+import { SmartSlottingGridModal, clearSmartSlottingCache } from '../../warehouses/components/SmartSlottingGridModal';
+import { clearWarehouseBinsCache } from '../../warehouses/components/WarehouseSlottingGrid';
+import InboundPrintModal from '../components/InboundPrintModal';
+import type { InboundReceiptOrder } from '../Inbound';
+
+export const isCompletedInboundStatus = (status?: string): boolean => {
+  if (!status) return false;
+  const s = String(status).trim().toLowerCase();
+  return (
+    s === 'completed' ||
+    s === 'received' ||
+    s === 'đã nhập kho' ||
+    s === 'đã xuất trả' ||
+    s === 'shipped' ||
+    s === 'done'
+  );
+};
 
 // ─── TYPES & INTERFACES ────────────────────────────────────────
 
@@ -59,6 +76,14 @@ export interface ProductOption {
   salePrice?: number;
   price?: number;
   stock?: number;
+  weight?: number;
+  length?: number;
+  width?: number;
+  height?: number;
+  volume?: number;
+  volumetricWeight?: number;
+  tempRequirement?: string;
+  turnoverClass?: string;
 }
 
 export interface SupplierOption {
@@ -81,6 +106,7 @@ export interface WarehouseOption {
   id: string;
   code: string;
   name: string;
+  isFrozen?: boolean;
 }
 
 export interface FormDetailRow {
@@ -273,6 +299,8 @@ export interface InboundTab {
   amountPaid: number;
   status: string;
   stagedSubWarehouses?: any[];
+  initialProductSkus?: string[];
+  initialProductNames?: string[];
   details: FormDetailRow[];
 }
 
@@ -2201,7 +2229,8 @@ export default function CreateStockInOrderPage({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showAiSlottingModal, setShowAiSlottingModal] = useState(false);
   const [aiSlottingTargetRowId, setAiSlottingTargetRowId] = useState<string | null>(null);
-  const [pendingSaveConfig, setPendingSaveConfig] = useState<{ isPrint: boolean; saveStatus: 'DRAFT' | 'READY' | 'COMPLETED' } | null>(null);
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [printOrderData, setPrintOrderData] = useState<InboundReceiptOrder | null>(null);
 
   // Hardware Barcode Scanner Auto-Detection State
   const [isScannerConnected, setIsScannerConnected] = useState<boolean>(true);
@@ -2239,8 +2268,7 @@ export default function CreateStockInOrderPage({
   }, [tabs, activeTabId]);
 
   const isViewMode = actionParam === 'view';
-  const isTabDraft = !activeTab?.id || ['DRAFT', 'draft', 'Đơn nháp'].includes(activeTab?.status || 'DRAFT');
-  const isReadOnly = isViewMode || !isTabDraft;
+  const isReadOnly = isViewMode || (Boolean(activeTab?.id) && isCompletedInboundStatus(activeTab?.status));
 
   const handleAddNewTab = useCallback(() => {
     const newTabIndex = tabs.length + 1;
@@ -2275,7 +2303,7 @@ export default function CreateStockInOrderPage({
   // Toast auto-hide
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 3500);
+    const timer = setTimeout(() => setToast(null), 3000);
     return () => clearTimeout(timer);
   }, [toast]);
 
@@ -2354,6 +2382,14 @@ export default function CreateStockInOrderPage({
             salePrice: Number(p.retailPrice || p.salePrice || p.price || 0),
             price: Number(p.importPrice || p.purchasePrice || p.price || 0),
             stock: Number(p.stock || 0),
+            weight: Number(p.weight ?? 0),
+            length: Number(p.length ?? 0),
+            width: Number(p.width ?? 0),
+            height: Number(p.height ?? 0),
+            volume: Number(p.volume ?? 0),
+            volumetricWeight: Number(p.volumetricWeight ?? 0),
+            tempRequirement: p.tempRequirement || 'AMBIENT',
+            turnoverClass: p.turnoverClass || 'B',
           }));
           setProducts(filterOutDeletedProducts(normalized));
         }
@@ -2372,17 +2408,28 @@ export default function CreateStockInOrderPage({
             const merged = mergeStoredWarehouses(list);
             saveStoredWarehouses(merged);
           } catch { }
-          if (list.length > 0) {
-            const firstWhCode = list[0].code;
+          const unfrozenList = list.filter((w: any) => !w.isFrozen);
+          const firstWh = unfrozenList[0] || list[0];
+          const firstWhCode = firstWh ? firstWh.code : 'KHO-TONG';
+          if (firstWhCode) {
             setTabs((prevTabs) =>
               prevTabs.map((t) => {
-                if (!t.warehouseCode || t.warehouseCode === 'KHO-NVL') {
+                if (
+                  !t.warehouseCode ||
+                  t.warehouseCode === 'KHO-NVL' ||
+                  list.find((w: any) => w.code === t.warehouseCode)?.isFrozen
+                ) {
                   return {
                     ...t,
                     warehouseCode: firstWhCode,
                     details: t.details.map((d) => ({
                       ...d,
-                      warehouseCode: !d.warehouseCode || d.warehouseCode === 'KHO-NVL' ? firstWhCode : d.warehouseCode,
+                      warehouseCode:
+                        !d.warehouseCode ||
+                        d.warehouseCode === 'KHO-NVL' ||
+                        list.find((w: any) => w.code === d.warehouseCode)?.isFrozen
+                          ? firstWhCode
+                          : d.warehouseCode,
                     })),
                   };
                 }
@@ -2546,9 +2593,20 @@ export default function CreateStockInOrderPage({
           };
         });
 
-        while (detailsList.length < DEFAULT_ROWS_COUNT) {
-          detailsList.push(makeEmptyRow(detailsList.length + 1, orderWhCode));
+        if (actionParam !== 'view') {
+          while (detailsList.length < DEFAULT_ROWS_COUNT) {
+            detailsList.push(makeEmptyRow(detailsList.length + 1, orderWhCode));
+          }
+        } else if (detailsList.length === 0) {
+          detailsList.push(makeEmptyRow(1, orderWhCode));
         }
+
+        const initialSkus = (orderData.details || [])
+          .map((d: any) => (d.product?.internalSku || d.productSku || d.sku || '').trim().toUpperCase())
+          .filter(Boolean);
+        const initialNames = (orderData.details || [])
+          .map((d: any) => (d.product?.name || d.productName || '').trim().toLowerCase())
+          .filter(Boolean);
 
         const loadedTab: InboundTab = {
           tabId: `tab-edit-${orderData.id}`,
@@ -2577,6 +2635,8 @@ export default function CreateStockInOrderPage({
           shippingFee: Number(orderData.shippingFee || 0),
           amountPaid: Number(orderData.amountPaid || orderData.totalAmount || 0),
           status: orderData.status || 'DRAFT',
+          initialProductSkus: initialSkus,
+          initialProductNames: initialNames,
           details: detailsList,
         };
 
@@ -2746,6 +2806,10 @@ export default function CreateStockInOrderPage({
       return;
     }
 
+    const pInfo = products.find(
+      (p) => String(p.id) === String(scanned.id) || (barcodeVal && p.internalSku?.toLowerCase() === barcodeVal.toLowerCase())
+    );
+
     // 2. Nếu chưa có, kiểm tra dòng trống có sẵn để điền vào
     const emptyRow = activeTab.details.find((r) => !r.productId && !r.productName);
     if (emptyRow) {
@@ -2757,6 +2821,12 @@ export default function CreateStockInOrderPage({
         price: priceVal,
         qty: 1,
         totalAmount: priceVal,
+        weight: Number(pInfo?.weight ?? (scanned as any)?.weight ?? 0),
+        length: Number(pInfo?.length ?? (scanned as any)?.length ?? 0),
+        width: Number(pInfo?.width ?? (scanned as any)?.width ?? 0),
+        height: Number(pInfo?.height ?? (scanned as any)?.height ?? 0),
+        volume: Number(pInfo?.volume ?? (scanned as any)?.volume ?? 0),
+        volumetricWeight: Number(pInfo?.volumetricWeight ?? (scanned as any)?.volumetricWeight ?? 0),
       });
     } else {
       // 3. Thêm dòng mới vào bảng
@@ -2768,6 +2838,12 @@ export default function CreateStockInOrderPage({
       newRow.price = priceVal;
       newRow.qty = 1;
       newRow.totalAmount = priceVal;
+      newRow.weight = Number(pInfo?.weight ?? (scanned as any)?.weight ?? 0);
+      newRow.length = Number(pInfo?.length ?? (scanned as any)?.length ?? 0);
+      newRow.width = Number(pInfo?.width ?? (scanned as any)?.width ?? 0);
+      newRow.height = Number(pInfo?.height ?? (scanned as any)?.height ?? 0);
+      newRow.volume = Number(pInfo?.volume ?? (scanned as any)?.volume ?? 0);
+      newRow.volumetricWeight = Number(pInfo?.volumetricWeight ?? (scanned as any)?.volumetricWeight ?? 0);
 
       updateActiveTab((tab) => ({ ...tab, details: [...tab.details, newRow] }));
     }
@@ -3050,80 +3126,141 @@ export default function CreateStockInOrderPage({
     return Math.max(0, grandTotal - paid);
   }, [grandTotal, activeTab]);
 
-  const handleConfirmAiSlotting = (updatedRows: FormDetailRow[]) => {
-    setShowAiSlottingModal(false);
-
-    updateActiveTab((tab) => {
-      const updatedMap = new Map(updatedRows.map((r) => [r.rowId, r]));
-      const mergedDetails = tab.details.map((row) => {
-        if (updatedMap.has(row.rowId)) {
-          return updatedMap.get(row.rowId)!;
-        }
-        return row;
-      });
-
-      const hasEmptyRow = mergedDetails.some((r) => !r.productId && !r.productName?.trim());
-      if (!hasEmptyRow) {
-        mergedDetails.push(makeEmptyRow(mergedDetails.length + 1, tab.warehouseCode || 'KH006'));
-      }
-
-      return {
-        ...tab,
-        details: mergedDetails,
-      };
+  // Kiểm tra xem đã có bất kỳ hàng hóa nào trong phiếu được chọn ô kệ hay chưa
+  const hasAssignedBins = useMemo(() => {
+    if (!activeTab) return false;
+    return (activeTab.details || []).some((r) => {
+      const hasProduct = Boolean(r.productId || r.productName?.trim() || r.productSku?.trim());
+      if (!hasProduct) return false;
+      const hasArray = Array.isArray(r.assignedBins) && r.assignedBins.length > 0;
+      const hasStr = Boolean(r.locationBin && r.locationBin.trim() && r.locationBin.trim() !== '-');
+      return hasArray || hasStr;
     });
+  }, [activeTab]);
 
-    if (pendingSaveConfig) {
-      // Flow 1: Triggered from "Lưu/Hoàn thành phiếu nhập" button at bottom of page
-      const cfg = pendingSaveConfig;
-      setPendingSaveConfig(null);
-      setTimeout(() => {
-        handleSaveInboundOrder(cfg.isPrint, cfg.saveStatus, true);
-      }, 100);
-    } else {
-      // Flow 2: Triggered from individual item action button in table
-      setToast({ message: 'Đã Lưu cho sản phẩm trong danh sách!', type: 'success' });
-      setAiSlottingTargetRowId(null);
+  const handleOpenPrintModal = useCallback((overrideItems?: FormDetailRow[]) => {
+    if (!activeTab) return;
+    const itemsToPrint = overrideItems || activeTab.details.filter(
+      (r) => (r.productId || r.productName?.trim() || r.productSku?.trim()) && Number(r.qty) > 0
+    );
+    if (itemsToPrint.length === 0) {
+      setToast({ message: 'Không có mặt hàng nào trong phiếu để in', type: 'error' });
+      return;
     }
-  };
 
-  const handleSkipAiSlotting = () => {
-    setShowAiSlottingModal(false);
-    if (pendingSaveConfig) {
-      const cfg = pendingSaveConfig;
-      setPendingSaveConfig(null);
-      handleSaveInboundOrder(cfg.isPrint, cfg.saveStatus, true);
-    } else {
-      setAiSlottingTargetRowId(null);
-    }
-  };
+    const currentSubtotal = itemsToPrint.reduce(
+      (s, r) => s + (Number(r.totalAmount) || (Number(r.qty) * Number(r.price))),
+      0
+    );
+    const currentVatAmount = (currentSubtotal * (Number(activeTab.vatRate) || 0)) / 100;
+    const currentGrandTotal = Math.max(
+      0,
+      currentSubtotal - (Number(activeTab.discount) || 0) + currentVatAmount + (Number(activeTab.shippingFee) || 0)
+    );
+
+    const printData: InboundReceiptOrder = {
+      id: activeTab.id || `temp-${Date.now()}`,
+      receiptNo: activeTab.orderNo || `PNK-${Date.now().toString().slice(-6)}`,
+      poNumber: activeTab.orderNo || `PNK-${Date.now().toString().slice(-6)}`,
+      supplier: activeTab.supplierName || 'Nhà cung cấp',
+      supplierId: activeTab.supplierId,
+      supplierPhone: activeTab.supplierPhone,
+      supplierAddress: activeTab.supplierAddress,
+      warehouseCode: activeTab.warehouseCode || 'KHO-NVL',
+      employeeName: activeTab.employeeName || currentUserName,
+      orderDate: activeTab.orderDate || new Date().toISOString(),
+      expectedDate: activeTab.expectedDate || activeTab.orderDate,
+      status: activeTab.status || 'DRAFT',
+      description: activeTab.description,
+      subtotal: currentSubtotal,
+      discount: activeTab.discount || 0,
+      vatRate: activeTab.vatRate || 0,
+      vatAmount: currentVatAmount,
+      totalAmount: currentGrandTotal,
+      amountPaid: activeTab.amountPaid ?? currentGrandTotal,
+      itemsCount: itemsToPrint.length,
+      totalQty: itemsToPrint.reduce((s, r) => s + (Number(r.qty) || 0), 0),
+      details: itemsToPrint.map((r, i) => ({
+        id: r.rowId || String(i + 1),
+        productId: r.productId || String(i + 1),
+        productSku: r.productSku || '',
+        productName: r.productName || `Sản phẩm ${i + 1}`,
+        unit: r.unit || 'Cái',
+        qty: Number(r.qty || 1),
+        price: Number(r.price || 0),
+        discountPercent: Number(r.discountPercent || 0),
+        vatPercent: Number(r.vatPercent || 0),
+        totalLineAmount: Number(r.totalAmount || (Number(r.qty || 1) * Number(r.price || 0))),
+        warehouseCode: r.warehouseCode || activeTab.warehouseCode,
+        locationBin: r.locationBin,
+        assignedBins: r.assignedBins,
+        weight: Number(r.weight || 0),
+        volume: Number(r.volume || 0),
+        note: r.note,
+      })),
+    };
+
+    setPrintOrderData(printData);
+    setShowPrintModal(true);
+  }, [activeTab, currentUserName]);
+
+  // Intercept Ctrl+P to always open the official Mẫu 01-VT print modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+        if (!showPrintModal) {
+          e.preventDefault();
+          handleOpenPrintModal();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showPrintModal, handleOpenPrintModal]);
 
   const handleSaveInboundOrder = async (
     isPrint = false,
     saveStatus: 'DRAFT' | 'READY' | 'COMPLETED' = 'COMPLETED',
-    bypassAi = false
+    bypassAi = true,
+    overrideRows?: FormDetailRow[],
+    overrideSubWarehouses?: any[]
   ) => {
     if (!activeTab) return;
 
-    const isTabDraft = !activeTab.id || ['DRAFT', 'draft', 'Đơn nháp'].includes(activeTab.status || 'DRAFT');
-    if (!isTabDraft) {
+    const currentRows = overrideRows || activeTab.details;
+    const isCompleted = isCompletedInboundStatus(activeTab.status);
+    if (isCompleted) {
       setToast({
-        message: 'Phiếu nhập kho này đã lưu chính thức và không thể chỉnh sửa lại!',
+        message: 'Phiếu nhập kho này đã hoàn thành và không thể chỉnh sửa lại!',
         type: 'error',
       });
       return;
     }
 
-    if (activeValidItems.length === 0) {
-      setToast({ message: 'Vui lòng chọn ít nhất 1 sản phẩm với số lượng > 0', type: 'error' });
+    const itemsWithProduct = currentRows.filter(
+      (r) => r.productId || r.productName?.trim() || r.productSku?.trim()
+    );
+
+    if (itemsWithProduct.length === 0) {
+      setToast({
+        message: 'Phiếu nhập kho phải có ít nhất 1 hàng hóa! Vui lòng chọn hàng hóa trước khi tạo phiếu.',
+        type: 'error',
+      });
       return;
     }
 
-    if (!bypassAi) {
-      setPendingSaveConfig({ isPrint, saveStatus });
-      setShowAiSlottingModal(true);
+    const invalidQtyItem = itemsWithProduct.find(
+      (r) => !r.qty || Number(r.qty) < 1 || isNaN(Number(r.qty))
+    );
+    if (invalidQtyItem) {
+      setToast({
+        message: `Mặt hàng "${invalidQtyItem.productName || invalidQtyItem.productSku || 'trong phiếu'}" có số lượng không hợp lệ. Số lượng phải lớn hơn hoặc bằng 1!`,
+        type: 'error',
+      });
       return;
     }
+
+    const currentValidItems = itemsWithProduct;
 
     const safeNum = (v: any, max = 999999999999.99) => {
       const n = Number(v);
@@ -3136,6 +3273,16 @@ export default function CreateStockInOrderPage({
       ? activeTab.orderNo.trim().toUpperCase()
       : generateOrderCode();
 
+    const currentSubtotal = currentValidItems.reduce(
+      (s, r) => s + (Number(r.totalAmount) || (Number(r.qty) * Number(r.price))),
+      0
+    );
+    const currentVatAmount = (currentSubtotal * (Number(activeTab.vatRate) || 0)) / 100;
+    const currentGrandTotal = Math.max(
+      0,
+      currentSubtotal - (Number(activeTab.discount) || 0) + currentVatAmount + (Number(activeTab.shippingFee) || 0)
+    );
+
     const poPayload = {
       poNumber: generatedNo,
       supplierId: activeTab.supplierId || undefined,
@@ -3147,17 +3294,17 @@ export default function CreateStockInOrderPage({
       expectedDate: activeTab.orderDate,
       status: saveStatus === 'COMPLETED' ? 'RECEIVED' : saveStatus === 'READY' ? 'APPROVED' : 'DRAFT',
       description: activeTab.description?.trim() || 'Tạo phiếu nhập hàng từ nhà cung cấp',
-      subtotal,
+      subtotal: currentSubtotal,
       discount: activeTab.discount || 0,
       vatRate: activeTab.vatRate || 0,
-      vatAmount,
+      vatAmount: currentVatAmount,
       shippingFee: activeTab.shippingFee || 0,
-      totalAmount: grandTotal,
-      amountPaid: activeTab.amountPaid ?? grandTotal,
-      debtAmount: Math.max(0, grandTotal - (activeTab.amountPaid ?? grandTotal)),
+      totalAmount: currentGrandTotal,
+      amountPaid: activeTab.amountPaid ?? currentGrandTotal,
+      debtAmount: Math.max(0, currentGrandTotal - (activeTab.amountPaid ?? currentGrandTotal)),
       paymentMethod: activeTab.paymentMethod,
       paymentAccount: activeTab.paymentAccount,
-      details: activeValidItems.map((r) => {
+      details: currentValidItems.map((r) => {
         let noteText = r.note || '';
         if (r.expiryDate && !noteText.includes('[HSD:')) {
           noteText = noteText ? `${noteText} [HSD: ${r.expiryDate}]` : `[HSD: ${r.expiryDate}]`;
@@ -3218,9 +3365,25 @@ export default function CreateStockInOrderPage({
         const fullWhList = getStoredWarehouses();
         let matchedWh = fullWhList.find((w) => w.code === activeTab.warehouseCode || w.id === activeTab.warehouseCode) || fullWhList[0];
         if (matchedWh) {
-          const currentSubWarehouses = activeTab.stagedSubWarehouses && activeTab.stagedSubWarehouses.length > 0 
-            ? activeTab.stagedSubWarehouses 
-            : (matchedWh.subWarehouses || []);
+          const currentSubWarehouses = overrideSubWarehouses && overrideSubWarehouses.length > 0 
+            ? overrideSubWarehouses 
+            : (activeTab.stagedSubWarehouses && activeTab.stagedSubWarehouses.length > 0 
+                ? activeTab.stagedSubWarehouses 
+                : (matchedWh.subWarehouses || []));
+
+          const currentActiveSkus = new Set(
+            currentValidItems.map((r) => (r.productSku || '').trim().toUpperCase()).filter(Boolean)
+          );
+          const currentActiveNames = new Set(
+            currentValidItems.map((r) => (r.productName || '').trim().toLowerCase()).filter(Boolean)
+          );
+
+          const deletedSkus = new Set(
+            (activeTab.initialProductSkus || []).filter((sku) => sku && !currentActiveSkus.has(sku))
+          );
+          const deletedNames = new Set(
+            (activeTab.initialProductNames || []).filter((name) => name && !currentActiveNames.has(name))
+          );
 
           let whChanged = false;
           const updatedSubs = currentSubWarehouses.map((sub: any) => {
@@ -3229,7 +3392,52 @@ export default function CreateStockInOrderPage({
               const rackCodeUpper = String(rk.rackCode || '').trim().toUpperCase();
               const rackIdUpper = String(rk.id || '').trim().toUpperCase();
 
-              activeValidItems.forEach((r) => {
+              // 1. Remove deleted products from this order across all bins of this rack
+              if (deletedSkus.size > 0 || deletedNames.size > 0) {
+                Object.keys(custom).forEach((bKey) => {
+                  const entry = custom[bKey];
+                  if (!entry) return;
+                  let prods = Array.isArray(entry.products) ? [...entry.products] : [];
+                  const hadCount = prods.length;
+                  prods = prods.filter((p) => {
+                    const pSku = (p.sku || '').trim().toUpperCase();
+                    const pName = (p.productName || '').trim().toLowerCase();
+                    if (pSku && deletedSkus.has(pSku)) return false;
+                    if (pName && deletedNames.has(pName)) return false;
+                    return true;
+                  });
+                  if (prods.length !== hadCount) {
+                    whChanged = true;
+                    if (prods.length === 0) {
+                      custom[bKey] = {
+                        ...entry,
+                        occupancyPct: 0,
+                        totalPhysical: 0,
+                        products: [],
+                        notes: '',
+                        productName: '',
+                        sku: '',
+                      };
+                    } else {
+                      const totPct = Math.min(100, prods.reduce((sum, p) => sum + (Number(p.occupancyPct) || 0), 0));
+                      const totQty = prods.reduce((sum, p) => sum + (Number(p.qty) || 0), 0);
+                      const desc = `Đã chứa: ${totPct}% (${prods.map((p) => `${p.productName}: ${p.qty} ${p.unit || 'cái'} [${p.occupancyPct}%]`).join(', ')})`;
+                      custom[bKey] = {
+                        ...entry,
+                        occupancyPct: totPct,
+                        totalPhysical: totQty,
+                        products: prods,
+                        notes: desc,
+                        productName: prods.map((p) => p.productName).join(', '),
+                        sku: prods.map((p) => p.sku).filter(Boolean).join(', '),
+                      };
+                    }
+                  }
+                });
+              }
+
+              // 2. Add / update active valid items
+              currentValidItems.forEach((r) => {
                 let assignedList: string[] = Array.isArray(r.assignedBins) ? r.assignedBins : [];
                 if (assignedList.length === 0 && r.locationBin) {
                   assignedList = r.locationBin.split(',').map((s: string) => s.trim());
@@ -3243,7 +3451,8 @@ export default function CreateStockInOrderPage({
                   const shortBin = (cleanCode.split('-').pop() || cleanCode).toUpperCase();
 
                   const isRackMatch = (rackCodeUpper && (codeParts.includes(rackCodeUpper) || cleanCodeUpper.includes('-' + rackCodeUpper + '-') || cleanCodeUpper.includes(rackCodeUpper))) ||
-                                      (rackIdUpper && (codeParts.includes(rackIdUpper) || cleanCodeUpper.includes(rackIdUpper)));
+                                      (rackIdUpper && (codeParts.includes(rackIdUpper) || cleanCodeUpper.includes(rackIdUpper))) ||
+                                      (!cleanCodeUpper.includes('-') && (sub.racks?.length === 1 || rk.rackCode === 'R01' || rk.id === 'R01' || Boolean((rk.customBins || {})[cleanCode]) || Boolean((rk.customBins || {})[shortBin])));
 
                   if (isRackMatch) {
                     const pctMatch = bCode.match(/\((\d+(?:\.\d+)?)%\)/);
@@ -3263,23 +3472,75 @@ export default function CreateStockInOrderPage({
                       binQty = Number(r.qty || 0);
                     }
 
+                    const existingEntry = custom[cleanCode] || custom[shortBin] || (normTarget ? custom[normTarget] : null);
+                    let existingProds: Array<{ sku?: string; productName: string; qty: number; occupancyPct: number; unit?: string }> = [];
+                    if (existingEntry && Array.isArray(existingEntry.products) && existingEntry.products.length > 0) {
+                      existingProds = [...existingEntry.products];
+                    } else if (existingEntry && existingEntry.productName && Number(existingEntry.totalPhysical || 0) > 0 && Number(existingEntry.occupancyPct || 0) > 0) {
+                      existingProds = [{
+                        sku: existingEntry.sku || '',
+                        productName: existingEntry.productName,
+                        qty: Number(existingEntry.totalPhysical || 0),
+                        occupancyPct: Number(existingEntry.occupancyPct || 0),
+                        unit: existingEntry.unit || 'cái',
+                      }];
+                    }
+
+                    const curSku = (r.productSku || '').trim().toUpperCase();
+                    const curName = (r.productName || '').trim().toLowerCase();
+                    const matchProdIdx = existingProds.findIndex((p) => {
+                      const pSku = (p.sku || '').trim().toUpperCase();
+                      const pName = (p.productName || '').trim().toLowerCase();
+                      return (curSku && pSku && curSku === pSku) || (curName && pName && curName === pName);
+                    });
+
+                    if (matchProdIdx >= 0) {
+                      existingProds[matchProdIdx] = {
+                        sku: r.productSku || existingProds[matchProdIdx].sku || '',
+                        productName: r.productName || existingProds[matchProdIdx].productName,
+                        qty: binQty,
+                        occupancyPct: binPct,
+                        unit: r.unit || existingProds[matchProdIdx].unit || 'cái',
+                      };
+                    } else {
+                      existingProds.push({
+                        sku: r.productSku || '',
+                        productName: r.productName,
+                        qty: binQty,
+                        occupancyPct: binPct,
+                        unit: r.unit || 'cái',
+                      });
+                    }
+
+                    const totalShelfPct = Math.min(100, existingProds.reduce((sum, p) => sum + (Number(p.occupancyPct) || 0), 0));
+                    const totalShelfQty = existingProds.reduce((sum, p) => sum + (Number(p.qty) || 0), 0);
+                    const descNote = `Đã chứa: ${totalShelfPct}% (${existingProds.map((p) => `${p.productName}: ${p.qty} ${p.unit || 'cái'} [${p.occupancyPct}%]`).join(', ')})`;
+
                     const updatedEntry = {
                       binCode: shortBin,
                       length: 120,
                       width: 80,
                       height: 100,
                       maxWeight: 500,
-                      occupancyPct: binPct,
-                      totalPhysical: binQty,
-                      notes: `Đã chứa: ${binPct}% (${binQty} cái)`,
-                      productName: r.productName,
-                      sku: r.productSku,
+                      occupancyPct: totalShelfPct,
+                      totalPhysical: totalShelfQty,
+                      products: existingProds,
+                      notes: descNote,
+                      productName: existingProds.map((p) => p.productName).join(', '),
+                      sku: existingProds.map((p) => p.sku).filter(Boolean).join(', '),
                       unit: r.unit || 'cái',
                     };
 
                     custom[cleanCode] = updatedEntry;
                     custom[shortBin] = updatedEntry;
                     if (normTarget) custom[normTarget] = updatedEntry;
+                    const whCodeStr = matchedWh.code || activeTab.warehouseCode || 'KH006';
+                    const fullComposite = `${whCodeStr}-${sub.code || 'ZONE'}-${rk.rackCode}-${shortBin}`;
+                    const rackKey = `${rk.rackCode}-${shortBin}`;
+                    custom[fullComposite] = updatedEntry;
+                    custom[normalizeBinKey(fullComposite)] = updatedEntry;
+                    custom[rackKey] = updatedEntry;
+                    custom[normalizeBinKey(rackKey)] = updatedEntry;
                     whChanged = true;
                   }
                 });
@@ -3289,17 +3550,68 @@ export default function CreateStockInOrderPage({
             return { ...sub, racks };
           });
 
-          if (whChanged || (activeTab.stagedSubWarehouses && activeTab.stagedSubWarehouses.length > 0)) {
+          if (whChanged || (currentSubWarehouses && currentSubWarehouses.length > 0)) {
             const updatedWh: WarehouseRecord = {
               ...matchedWh,
               subWarehouses: updatedSubs,
             };
-            saveStoredWarehouses(fullWhList.map((w) => (w.id === updatedWh.id || w.code === updatedWh.code ? updatedWh : w)));
+            const exists = fullWhList.some((w) => w.id === updatedWh.id || w.code === updatedWh.code);
+            const nextList = exists
+              ? fullWhList.map((w) => (w.id === updatedWh.id || w.code === updatedWh.code ? updatedWh : w))
+              : [...fullWhList, updatedWh];
+            saveStoredWarehouses(nextList);
             upsertWarehouseToApi(updatedWh).catch((err: any) => console.error('Lỗi lưu CSDL kho:', err));
           }
         }
       } catch (err) {
         console.error('Error persisting staged warehouse topology:', err);
+      }
+
+      // Sync stored_stock_in_orders in localStorage for instant synchronization across all screens
+      try {
+        const storedStockInStr = localStorage.getItem('stored_stock_in_orders');
+        let storedStockIn: any[] = [];
+        if (storedStockInStr) {
+          try { storedStockIn = JSON.parse(storedStockInStr); } catch {}
+        }
+        const newOrderRecord = {
+          id: savedPO.id || `po_${Date.now()}`,
+          orderNumber: savedPO.poNumber || generatedNo,
+          poNumber: savedPO.poNumber || generatedNo,
+          receiptNo: savedPO.poNumber || generatedNo,
+          code: savedPO.poNumber || generatedNo,
+          warehouseCode: activeTab.warehouseCode || 'KH006',
+          supplierName: activeTab.supplierName || 'Nhà cung cấp',
+          orderDate: activeTab.orderDate || new Date().toISOString(),
+          status: saveStatus || 'completed',
+          details: currentValidItems.map((r) => {
+            let assignedList: string[] = Array.isArray(r.assignedBins) ? r.assignedBins : [];
+            if (assignedList.length === 0 && r.locationBin) {
+              assignedList = r.locationBin.split(',').map((s: string) => s.trim());
+            }
+            return {
+              productId: r.productId,
+              productSku: r.productSku,
+              productName: r.productName,
+              unit: r.unit || 'cái',
+              qty: Number(r.qty || 1),
+              assignedBins: assignedList,
+              occupancyPct: (() => {
+                const pctMatch = assignedList.join(' ').match(/\((\d+(?:\.\d+)?)%\)/);
+                return pctMatch ? Number(pctMatch[1]) : ((r as any).occupancyPct || 100);
+              })(),
+            };
+          }),
+        };
+        const existingIdx = storedStockIn.findIndex((o) => String(o.id) === String(newOrderRecord.id) || o.poNumber === newOrderRecord.poNumber);
+        if (existingIdx >= 0) {
+          storedStockIn[existingIdx] = newOrderRecord;
+        } else {
+          storedStockIn.unshift(newOrderRecord);
+        }
+        localStorage.setItem('stored_stock_in_orders', JSON.stringify(storedStockIn));
+      } catch (errLocal) {
+        console.warn('Lỗi lưu stored_stock_in_orders vào localStorage:', errLocal);
       }
 
       if (!isEditing) {
@@ -3325,6 +3637,8 @@ export default function CreateStockInOrderPage({
         releaseActiveDraftSlotLocks(activeTab.tabId);
       }
       clearAllDraftSlotLocks();
+      clearWarehouseBinsCache();
+      clearSmartSlottingCache();
       window.dispatchEvent(new Event('warehouse-goods-cleared'));
       window.dispatchEvent(new Event('storage'));
 
@@ -3334,12 +3648,12 @@ export default function CreateStockInOrderPage({
       });
 
       if (isPrint) {
-        window.print();
+        handleOpenPrintModal(currentValidItems);
+      } else {
+        setTimeout(() => {
+          handleBackNavigation();
+        }, 1000);
       }
-
-      setTimeout(() => {
-        handleBackNavigation();
-      }, 1000);
     } catch (err: any) {
       setToast({ message: err.message || 'Lỗi khi lưu phiếu nhập hàng', type: 'error' });
     } finally {
@@ -3347,11 +3661,52 @@ export default function CreateStockInOrderPage({
     }
   };
 
-  const getFilteredProductsForRow = (rowText: string) => {
-    const kw = (rowText || '').trim().toLowerCase();
-    if (!kw) return products;
-    return products.filter(
-      (p) => p.name.toLowerCase().includes(kw) || (p.internalSku || '').toLowerCase().includes(kw)
+  const getFilteredProductsForRow = (rowText: string, currentRowId?: string) => {
+    const currentRow = (activeTab?.details || []).find((r) => r.rowId === currentRowId);
+    const isSelectedProductText = currentRow?.productId && (
+      rowText === `${currentRow.productSku ? currentRow.productSku + ' - ' : ''}${currentRow.productName}` ||
+      rowText === currentRow.productName ||
+      rowText === currentRow.productSku
+    );
+
+    const kw = isSelectedProductText ? '' : (rowText || '').trim().toLowerCase();
+
+    // Collect products selected in OTHER rows to exclude them
+    const otherSelectedIds = new Set<string>();
+    const otherSelectedSkus = new Set<string>();
+    const otherSelectedNames = new Set<string>();
+
+    (activeTab?.details || []).forEach((r) => {
+      if (currentRowId && r.rowId === currentRowId) return;
+      if (r.productId && String(r.productId).trim()) {
+        otherSelectedIds.add(String(r.productId).trim().toLowerCase());
+      }
+      if (r.productSku && String(r.productSku).trim()) {
+        otherSelectedSkus.add(String(r.productSku).trim().toLowerCase());
+      }
+      if (r.productName && String(r.productName).trim()) {
+        otherSelectedNames.add(String(r.productName).trim().toLowerCase());
+      }
+    });
+
+    const unselectedProducts = products.filter((p) => {
+      const pId = String(p.id || '').trim().toLowerCase();
+      const pSku = String(p.internalSku || '').trim().toLowerCase();
+      const pName = String(p.name || '').trim().toLowerCase();
+
+      if (pId && otherSelectedIds.has(pId)) return false;
+      if (pSku && otherSelectedSkus.has(pSku)) return false;
+      if (pName && otherSelectedNames.has(pName)) return false;
+      return true;
+    });
+
+    if (!kw) return unselectedProducts;
+
+    return unselectedProducts.filter(
+      (p) =>
+        p.name.toLowerCase().includes(kw) ||
+        (p.internalSku || '').toLowerCase().includes(kw) ||
+        `${p.internalSku} ${p.name}`.toLowerCase().includes(kw)
     );
   };
 
@@ -3488,7 +3843,7 @@ export default function CreateStockInOrderPage({
       {!isFullscreen && (
         <div className="flex items-center justify-between gap-3 flex-wrap flex-shrink-0">
           <div className="inline-flex items-center gap-2.5 rounded-xl bg-cyan-600 px-4 py-2 text-white shadow-sm">
-            <TrendingDown className="h-5 w-5 text-cyan-100" />
+            <ArrowDownToLine className="h-5 w-5 text-cyan-100" />
             <h1 className="text-base font-black tracking-tight uppercase">
               {isViewMode
                 ? 'XEM CHI TIẾT PHIẾU NHẬP HÀNG HÓA'
@@ -3542,14 +3897,26 @@ export default function CreateStockInOrderPage({
             })}
 
             {/* Add New Tab Button */}
+            {!isViewMode && (
+              <button
+                type="button"
+                onClick={handleAddNewTab}
+                className="inline-flex items-center gap-1 rounded-xl border-2 border-dashed border-cyan-400 bg-cyan-50/60 px-3 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-100 hover:border-cyan-600 transition cursor-pointer"
+                title="Tạo thêm phiếu nhập mới (Tab tiếp theo)"
+              >
+                <Plus size={14} className="text-cyan-700" />
+                <span>+ Thêm phiếu mới</span>
+              </button>
+            )}
+
             <button
               type="button"
-              onClick={handleAddNewTab}
-              className="inline-flex items-center gap-1 rounded-xl border-2 border-dashed border-cyan-400 bg-cyan-50/60 px-3 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-100 hover:border-cyan-600 transition cursor-pointer"
-              title="Tạo thêm phiếu nhập mới (Tab tiếp theo)"
+              onClick={() => handleOpenPrintModal()}
+              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-emerald-500 bg-white px-3.5 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-50 transition shadow-xs cursor-pointer ml-1"
+              title="In Phiếu Nhập Kho (Mẫu 01-VT chuẩn Bộ Tài Chính)"
             >
-              <Plus size={14} className="text-cyan-700" />
-              <span>+ Thêm phiếu mới</span>
+              <Printer size={15} className="text-emerald-700" />
+              <span>In phiếu</span>
             </button>
 
             <button
@@ -3681,58 +4048,82 @@ export default function CreateStockInOrderPage({
 
           {/* Chọn Kho nhập hàng (Custom Rounded Dropdown) */}
           <div className="relative warehouse-dropdown-box">
-            <label className="mb-1.5 block text-xs font-black uppercase text-slate-700 flex items-center gap-1">
-              <WarehouseIcon className="h-4 w-4 text-cyan-600" />
-              <span>Kho nhập hàng</span>
-            </label>
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="block text-xs font-black uppercase text-slate-700 flex items-center gap-1">
+                <WarehouseIcon className="h-4 w-4 text-cyan-600" />
+                <span>Kho nhập hàng</span>
+              </label>
+            </div>
             <div
               onClick={() => {
                 if (isReadOnly) return;
+                if (hasAssignedBins) {
+                  setToast({
+                    message: 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho lưu trữ!',
+                    type: 'error',
+                  });
+                  return;
+                }
                 setShowWarehouseDropdown((prev) => !prev);
               }}
-              className={`h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 flex items-center justify-between shadow-2xs transition ${isReadOnly ? 'bg-slate-100 border-slate-300 text-slate-600 cursor-not-allowed' : 'cursor-pointer hover:border-cyan-600'
-                }`}
+              className={`h-10 w-full rounded-xl border-2 px-3 text-sm font-bold flex items-center justify-between shadow-2xs transition ${
+                isReadOnly || hasAssignedBins
+                  ? 'bg-slate-100 border-slate-300 text-slate-600 cursor-not-allowed'
+                  : 'bg-white border-slate-300 text-slate-800 cursor-pointer hover:border-cyan-600'
+              }`}
+              title={hasAssignedBins ? 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho.' : undefined}
             >
-              <span className="truncate">
+              <span className="truncate flex items-center gap-1.5">
+                {hasAssignedBins && <Lock size={14} className="text-amber-600 shrink-0" />}
                 {warehouses.find((w) => w.code === activeTab?.warehouseCode)
                   ? `[${activeTab.warehouseCode}] ${warehouses.find((w) => w.code === activeTab.warehouseCode)?.name}`
                   : activeTab?.warehouseCode || (warehouses[0] ? `[${warehouses[0].code}] ${warehouses[0].name}` : 'Đang tải kho...')}
               </span>
-              <ChevronDown
-                size={16}
-                className={`text-slate-500 transition-transform duration-200 ${showWarehouseDropdown ? 'rotate-180' : ''}`}
-              />
+              {hasAssignedBins ? (
+                <Lock size={16} className="text-amber-600 shrink-0" />
+              ) : (
+                <ChevronDown
+                  size={16}
+                  className={`text-slate-500 transition-transform duration-200 ${showWarehouseDropdown ? 'rotate-180' : ''}`}
+                />
+              )}
             </div>
 
-            {!isReadOnly && showWarehouseDropdown && (
+            {!isReadOnly && !hasAssignedBins && showWarehouseDropdown && (
               <div className="absolute left-0 top-full z-[100] mt-1.5 w-full rounded-xl border border-slate-200 bg-white p-1.5 shadow-2xl animate-[fadeIn_0.15s_ease-out]">
                 <div className="max-h-60 overflow-y-auto custom-scrollbar space-y-1">
                   {warehouses.length === 0 ? (
                     <div className="p-3 text-center text-xs text-slate-400 font-bold">
                       Đang tải thông tin kho từ CSDL...
                     </div>
+                  ) : warehouses.filter((w) => !w.isFrozen).length === 0 ? (
+                    <div className="p-3 text-center text-xs text-amber-600 font-bold">
+                      Tất cả kho đang bị đóng băng kiểm kê. Vui lòng mở khóa kho để tạo đơn nhập.
+                    </div>
                   ) : (
-                    warehouses.map((wh) => {
-                      const isSelected = wh.code === activeTab?.warehouseCode;
-                      return (
-                        <div
-                          key={wh.id || wh.code}
-                          onClick={() => {
-                            handleWarehouseChange(wh.code);
-                            setShowWarehouseDropdown(false);
-                          }}
-                          className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-xs font-bold transition cursor-pointer ${isSelected
-                              ? 'bg-cyan-600 text-white shadow-xs'
-                              : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-900'
-                            }`}
-                        >
-                          <span>
-                            [{wh.code}] {wh.name}
-                          </span>
-                          {isSelected && <Check size={14} className="text-white" />}
-                        </div>
-                      );
-                    })
+                    warehouses
+                      .filter((w) => !w.isFrozen)
+                      .map((wh) => {
+                        const isSelected = wh.code === activeTab?.warehouseCode;
+                        return (
+                          <div
+                            key={wh.id || wh.code}
+                            onClick={() => {
+                              handleWarehouseChange(wh.code);
+                              setShowWarehouseDropdown(false);
+                            }}
+                            className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-xs font-bold transition cursor-pointer ${isSelected
+                                ? 'bg-cyan-600 text-white shadow-xs'
+                                : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-900'
+                              }`}
+                          >
+                            <span>
+                              [{wh.code}] {wh.name}
+                            </span>
+                            {isSelected && <Check size={14} className="text-white" />}
+                          </div>
+                        );
+                      })
                   )}
                 </div>
               </div>
@@ -3748,15 +4139,15 @@ export default function CreateStockInOrderPage({
           {/* ═══ PRODUCT SELECTION TABLE CARD ═══ */}
           <div className={`flex flex-col rounded-xl border-2 border-slate-200 bg-white shadow-sm overflow-hidden min-h-0 ${isFullscreen ? 'flex-1 h-full' : ''}`}>
             {/* Table Header Controls */}
-            <div className="px-3 py-2.5 border-b-2 border-slate-200 bg-slate-50 flex items-center justify-between flex-shrink-0">
+            <div className="px-3 py-2.5 border-b-2 border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2 flex-shrink-0">
               <div className="flex items-center gap-2 text-cyan-900 font-black text-xs sm:text-sm">
-                <Package className="h-4 w-4 text-cyan-600" />
+                <Package className="h-4 w-4 text-cyan-600 shrink-0" />
                 <span>
                   THÔNG TIN HÀNG HÓA NHẬP KHO ({activeValidItems.length} MẶT HÀNG - TỔNG SL: {totalQty})
                 </span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                 {!isReadOnly && (
                   <>
                     <button
@@ -3823,13 +4214,12 @@ export default function CreateStockInOrderPage({
                     <th className="p-2.5 w-32 text-center bg-slate-100">THÀNH TIỀN</th>
                     <th className="p-2.5 w-36 text-center bg-slate-100">HẠN SỬ DỤNG</th>
                     <th className="p-2.5 min-w-[130px] text-center bg-slate-100">GHI CHÚ</th>
-                    <th className="p-2.5 w-44 text-center bg-slate-100 min-w-[150px]">THAO TÁC</th>
+                    <th className="p-2.5 w-36 text-center bg-slate-100 min-w-[120px]">THAO TÁC</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {activeTab?.details.map((row, idx) => {
                     const isEven = idx % 2 === 1;
-                    const hasWeightOrVol = (row.weight || 0) > 0 || (row.volume || 0) > 0;
                     return (
                       <tr
                         key={row.rowId}
@@ -3849,7 +4239,11 @@ export default function CreateStockInOrderPage({
                             onChange={(e) => {
                               if (isReadOnly) return;
                               const val = e.target.value;
-                              updateRow(row.rowId, { productName: val });
+                              const isExact = row.productId && (val === `${row.productSku ? row.productSku + ' - ' : ''}${row.productName}` || val === row.productName);
+                              updateRow(row.rowId, {
+                                productName: val,
+                                ...(isExact ? {} : { productId: '', productSku: '' }),
+                              });
                               setActiveProductDropdownRowId(row.rowId);
                             }}
                             onFocus={() => {
@@ -3871,10 +4265,10 @@ export default function CreateStockInOrderPage({
                                 <span className="w-1/4 text-right uppercase">Giá mua</span>
                               </div>
                               <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
-                                {getFilteredProductsForRow(row.productName || row.productSku).length === 0 ? (
+                                {getFilteredProductsForRow(row.productName || row.productSku, row.rowId).length === 0 ? (
                                   <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy hàng hóa</div>
                                 ) : (
-                                  getFilteredProductsForRow(row.productName || row.productSku).map((p) => (
+                                  getFilteredProductsForRow(row.productName || row.productSku, row.rowId).map((p) => (
                                     <div
                                       key={p.id}
                                       onClick={() => {
@@ -3885,6 +4279,12 @@ export default function CreateStockInOrderPage({
                                           unit: p.unit || 'Cái',
                                           price: p.purchasePrice || p.salePrice || p.price || 0,
                                           qty: row.qty === 0 ? 1 : row.qty,
+                                          weight: Number(p.weight ?? 0),
+                                          length: Number(p.length ?? 0),
+                                          width: Number(p.width ?? 0),
+                                          height: Number(p.height ?? 0),
+                                          volume: Number(p.volume ?? 0),
+                                          volumetricWeight: Number(p.volumetricWeight ?? 0),
                                         });
                                         setActiveProductDropdownRowId(null);
                                       }}
@@ -3918,11 +4318,11 @@ export default function CreateStockInOrderPage({
                         <td className="p-1 border-r border-slate-200">
                           <input
                             type="number"
-                            min="0"
+                            min="1"
                             disabled={isReadOnly}
                             value={row.qty === 0 ? '' : row.qty}
                             onChange={(e) => updateRow(row.rowId, { qty: Number(e.target.value) })}
-                            placeholder="0"
+                            placeholder="1"
                             className="w-full h-9 px-2 text-center rounded-lg border border-slate-300 bg-white font-black text-slate-900 outline-none focus:border-cyan-600 text-xs sm:text-sm disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed"
                           />
                         </td>
@@ -4015,23 +4415,6 @@ export default function CreateStockInOrderPage({
                               }
                             >
                               <Sparkles size={16} strokeWidth={2} />
-                            </button>
-
-                            {/* 2. Cấu hình Trọng lượng & Thể tích */}
-                            <button
-                              type="button"
-                              onClick={() => setWeightModalRow(row)}
-                              className={`flex h-8 w-8 items-center justify-center rounded-xl transition cursor-pointer ${hasWeightOrVol
-                                  ? 'border border-emerald-600 bg-emerald-600 text-white shadow-xs hover:bg-emerald-700'
-                                  : 'border border-cyan-400 bg-white text-cyan-600 shadow-2xs hover:bg-cyan-600 hover:text-white hover:border-cyan-600'
-                                }`}
-                              title={
-                                hasWeightOrVol
-                                  ? `Trọng lượng: ${(row.weight || 0).toFixed(1)} kg, Thể tích: ${(row.volume || 0).toFixed(3)} m³`
-                                  : 'Cấu hình Trọng lượng & Thể tích'
-                              }
-                            >
-                              <Scale size={16} strokeWidth={2} />
                             </button>
 
                             {!isReadOnly && (
@@ -4362,6 +4745,15 @@ export default function CreateStockInOrderPage({
                 </div>
                 <button
                   type="button"
+                  onClick={() => handleOpenPrintModal()}
+                  className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-emerald-700 transition active:scale-95 cursor-pointer"
+                  title="In Phiếu Nhập Kho (Mẫu 01-VT chuẩn Bộ Tài Chính)"
+                >
+                  <Printer size={18} strokeWidth={2.2} />
+                  <span>IN PHIẾU NHẬP KHO</span>
+                </button>
+                <button
+                  type="button"
                   onClick={handleBackNavigation}
                   className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-cyan-800 transition active:scale-95 cursor-pointer"
                 >
@@ -4371,15 +4763,15 @@ export default function CreateStockInOrderPage({
               </>
             ) : (
               <>
-                {activeTab?.id && !['DRAFT', 'draft', 'Đơn nháp'].includes(activeTab?.status || 'DRAFT') && (
+                {activeTab?.id && isCompletedInboundStatus(activeTab?.status) && (
                   <div className="rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-center text-xs font-extrabold text-amber-800 shadow-xs">
-                    🔒 Phiếu đã lưu chính thức ({activeTab.status || 'Đã nhập kho'}). Chỉ hỗ trợ xem thông tin, không thể chỉnh sửa.
+                    🔒 Phiếu đã hoàn thành ({activeTab.status || 'Đã nhập kho'}). Chỉ hỗ trợ xem thông tin, không thể chỉnh sửa.
                   </div>
                 )}
 
                 <button
                   type="button"
-                  disabled={saving || (Boolean(activeTab?.id) && !['DRAFT', 'draft', 'Đơn nháp'].includes(activeTab?.status || 'DRAFT'))}
+                  disabled={saving || (Boolean(activeTab?.id) && isCompletedInboundStatus(activeTab?.status))}
                   onClick={() => handleSaveInboundOrder(true, 'COMPLETED')}
                   className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-emerald-700 transition active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
@@ -4389,7 +4781,7 @@ export default function CreateStockInOrderPage({
 
                 <button
                   type="button"
-                  disabled={saving || (Boolean(activeTab?.id) && !['DRAFT', 'draft', 'Đơn nháp'].includes(activeTab?.status || 'DRAFT'))}
+                  disabled={saving || (Boolean(activeTab?.id) && isCompletedInboundStatus(activeTab?.status))}
                   onClick={() => handleSaveInboundOrder(false, 'COMPLETED')}
                   className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-cyan-800 transition active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
@@ -4399,7 +4791,7 @@ export default function CreateStockInOrderPage({
 
                 <button
                   type="button"
-                  disabled={saving || (Boolean(activeTab?.id) && !['DRAFT', 'draft', 'Đơn nháp'].includes(activeTab?.status || 'DRAFT'))}
+                  disabled={saving || (Boolean(activeTab?.id) && isCompletedInboundStatus(activeTab?.status))}
                   onClick={() => handleSaveInboundOrder(false, 'DRAFT')}
                   className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-sm hover:bg-amber-600 transition active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
@@ -4455,12 +4847,8 @@ export default function CreateStockInOrderPage({
             stagedSubWarehouses: updatedSubWarehouses || t.stagedSubWarehouses,
           }));
           setShowAiSlottingModal(false);
-          setToast({ message: 'Đã cập nhật vị trí ô kệ cất hàng!', type: 'success' });
-          if (pendingSaveConfig) {
-            const cfg = pendingSaveConfig;
-            setPendingSaveConfig(null);
-            handleSaveInboundOrder(cfg.isPrint, cfg.saveStatus, true);
-          }
+          setAiSlottingTargetRowId(null);
+          setToast({ message: 'Đã cập nhật vị trí ô kệ cất hàng vào phiếu!', type: 'success' });
         }}
       />
 
@@ -4594,6 +4982,14 @@ export default function CreateStockInOrderPage({
           </div>
         </div>
       )}
+
+      {/* Official Standard Inbound Receipt Print Modal (Mẫu 01-VT chuẩn Bộ Tài Chính) */}
+      <InboundPrintModal
+        isOpen={showPrintModal}
+        onClose={() => setShowPrintModal(false)}
+        order={printOrderData}
+        warehouses={warehouses}
+      />
     </div>
   );
 

@@ -431,12 +431,71 @@ export function getUserWarehouseNames(
     .map((w) => w.name);
 }
 
+/**
+ * Trả về danh sách kho đang hoạt động và KHÔNG bị đóng băng.
+ * Dùng cho các thao tác giao dịch: Nhập kho, Xuất kho, Điều chuyển, Đặt hàng...
+ */
+export function getActiveUnfrozenWarehouses<T extends { status?: string; isFrozen?: boolean }>(warehouses: T[]): T[] {
+  return (warehouses || []).filter((w) => w.status !== 'inactive' && !w.isFrozen);
+}
+
+/**
+ * Trả về danh sách kho đang bị đóng băng kiểm kê.
+ * Dùng cho màn hình Kiểm kê kho.
+ */
+export function getFrozenWarehouses<T extends { status?: string; isFrozen?: boolean }>(warehouses: T[]): T[] {
+  return (warehouses || []).filter((w) => w.status !== 'inactive' && Boolean(w.isFrozen));
+}
+
+/**
+ * Gọi API đóng băng hoặc mở khóa kho, đồng bộ vào state & localStorage
+ */
+export async function toggleWarehouseFreezeApi(
+  warehouseIdOrCode: string,
+  freeze: boolean,
+  warehouses: WarehouseRecord[] = getStoredWarehouses(),
+): Promise<WarehouseRecord> {
+  const target = warehouses.find(
+    (w) => w.id === warehouseIdOrCode || w.code === warehouseIdOrCode,
+  );
+  const targetId = target?.id || warehouseIdOrCode;
+  const action = freeze ? 'freeze' : 'unfreeze';
+
+  const res = await fetch(`${API_BASE_URL}/warehouses/${encodeURIComponent(targetId)}/${action}`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    throw new Error(err?.message || `Không thể ${freeze ? 'đóng băng' : 'mở khóa'} kho hàng`);
+  }
+
+  const updated = (await res.json()) as WarehouseRecord;
+  const normalized = normalizeWarehouseRecord(updated);
+
+  // Update local storage and notify other components
+  const current = getStoredWarehouses();
+  const next = current.map((w) => (w.id === normalized.id || w.code === normalized.code ? normalized : w));
+  saveStoredWarehouses(next);
+  window.dispatchEvent(new CustomEvent('warehouse-freeze-changed', { detail: normalized }));
+
+  return normalized;
+}
+
 export interface BinCell {
   binCode: string;
   cellCode: string;
   bayCode: string;
   maxWeight: number;
   freeVol: number;
+  // Physical dimensions per cell (cm) — used by AI Slotting for accurate capacity
+  cellLengthCm?: number;  // Default: 120cm
+  cellWidthCm?: number;   // Default: 80cm
+  cellHeightCm?: number;  // Default: 100cm
+  cellVolumeM3?: number;  // Calculated: L*W*H / 1_000_000 (default: 0.96m³)
+  currentWeightKg?: number;    // Total weight of goods currently stored (kg)
+  currentOccupancyPct?: number; // Current occupancy percentage (0-100)
   isOccupied?: boolean;
   stockQty?: number;
   productId?: string;
@@ -479,7 +538,11 @@ export function buildWarehouseRackTopology(
     zonePrefix: string,
     rackId: string,
     floorId: string,
-    cellsCount = 10
+    cellsCount = 10,
+    cellLCm = 120,
+    cellWCm = 80,
+    cellHCm = 100,
+    maxWeight = 500
   ): BinCell[] => {
     return Array.from({ length: cellsCount }).map((_, idx) => {
       const cellNum = (idx + 1).toString().padStart(2, '0');
@@ -505,12 +568,18 @@ export function buildWarehouseRackTopology(
         }
       }
 
+      const cellVolM3 = Number(((cellLCm * cellWCm * cellHCm) / 1_000_000).toFixed(4));
+
       return {
         binCode,
         cellCode: `Ô C${cellNum}`,
         bayCode: `Khoang B${Math.ceil((idx + 1) / 2).toString().padStart(2, '0')}`,
-        maxWeight: 500,
-        freeVol: 450,
+        maxWeight,
+        freeVol: Math.round(cellVolM3 * 1000),
+        cellLengthCm: cellLCm,
+        cellWidthCm: cellWCm,
+        cellHeightCm: cellHCm,
+        cellVolumeM3: cellVolM3,
         isOccupied,
         stockQty,
         productId,
@@ -538,6 +607,10 @@ export function buildWarehouseRackTopology(
         binsPerShelf?: number;
         length?: number;
         width?: number;
+        defaultBinLength?: number;
+        defaultBinWidth?: number;
+        defaultBinHeight?: number;
+        defaultBinMaxWeight?: number;
       }> = [];
 
       if (Array.isArray(sub.racks) && sub.racks.length > 0) {
@@ -554,6 +627,10 @@ export function buildWarehouseRackTopology(
               : sub.binsPerShelf || 10,
           length: rk.length || sub.rackLength || 18,
           width: rk.width || sub.rackWidth || 1.2,
+          defaultBinLength: rk.defaultBinLength || sub.cellLength || 120,
+          defaultBinWidth: rk.defaultBinWidth || sub.cellWidth || 80,
+          defaultBinHeight: rk.defaultBinHeight || sub.cellHeight || 100,
+          defaultBinMaxWeight: rk.defaultBinMaxWeight || sub.maxWeightPerBin || 500,
         }));
       } else {
         const racksCount = sub.racksCount && sub.racksCount > 0 ? sub.racksCount : 1;
@@ -566,6 +643,10 @@ export function buildWarehouseRackTopology(
             binsPerShelf: sub.binsPerShelf || 10,
             length: sub.rackLength || 18,
             width: sub.rackWidth || 1.2,
+            defaultBinLength: sub.cellLength || 120,
+            defaultBinWidth: sub.cellWidth || 80,
+            defaultBinHeight: sub.cellHeight || 100,
+            defaultBinMaxWeight: sub.maxWeightPerBin || 500,
           });
         }
       }
@@ -574,6 +655,10 @@ export function buildWarehouseRackTopology(
         const rId = rk.rackCode.toUpperCase();
         const numShelves = rk.shelvesCount || 4;
         const numBins = rk.binsPerShelf || 10;
+        const binL = rk.defaultBinLength || sub.cellLength || 120;
+        const binW = rk.defaultBinWidth || sub.cellWidth || 80;
+        const binH = rk.defaultBinHeight || sub.cellHeight || 100;
+        const maxW = rk.defaultBinMaxWeight || sub.maxWeightPerBin || 500;
 
         const floors = Array.from({ length: numShelves }).map((_, flIdx) => {
           const floorNum = numShelves - flIdx;
@@ -582,7 +667,7 @@ export function buildWarehouseRackTopology(
             floorId,
             floorName: `Tầng ${floorId}`,
             floorDesc: `Mâm kệ tầng ${floorNum}`,
-            cells: createFloorCells(zoneCode, rId, floorId, numBins),
+            cells: createFloorCells(zoneCode, rId, floorId, numBins, binL, binW, binH, maxW),
           };
         });
 
@@ -590,7 +675,7 @@ export function buildWarehouseRackTopology(
           rackId: rId,
           rackName: rk.name || `Dãy Kệ ${rId} (${zoneName})`,
           dimensions: `${rk.length || 18}m Dài × ${rk.width || 1.2}m Rộng`,
-          spec: `${numShelves} Tầng × ${numBins} Ô`,
+          spec: `${numShelves} Tầng × ${numBins} Ô (${binL}×${binW}×${binH}cm - ${maxW}kg)`,
           zoneName: `${zoneName} (${zoneTypeLabel})`,
           floors,
         });

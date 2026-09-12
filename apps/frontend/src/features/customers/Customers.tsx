@@ -226,12 +226,12 @@ function calculateCustomerAccountStatus(user: CustomerUser, profile?: CustomerPr
 }
 
 export default function CustomersManagement() {
-  const { canPerformAction, isAdmin } = usePermissions();
-  const canCreate = isAdmin || canPerformAction('customers', 'create');
-  const canEdit = isAdmin || canPerformAction('customers', 'edit');
-  const canDelete = isAdmin || canPerformAction('customers', 'delete');
-  const canExport = isAdmin || canPerformAction('customers', 'export');
-  const canImport = isAdmin || canPerformAction('customers', 'import');
+  const { canPerformAction } = usePermissions();
+  const canCreate = canPerformAction('customers', 'create');
+  const canEdit = canPerformAction('customers', 'edit');
+  const canDelete = canPerformAction('customers', 'delete');
+  const canExport = canPerformAction('customers', 'export');
+  const canImport = canPerformAction('customers', 'import');
 
   const [users, setUsers] = React.useState<CustomerUser[]>([]);
   const [search, setSearch] = React.useState('');
@@ -986,46 +986,62 @@ export default function CustomersManagement() {
                             <Eye size={18} strokeWidth={2.5} />
                           </button>
 
-                          {canEdit && (
-                            <button
-                              type="button"
-                              className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
-                              title="Sửa thông tin"
-                              onClick={() => openUserModal('edit', user)}
-                            >
-                              <Pencil size={18} strokeWidth={2.5} />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            disabled={!canEdit}
+                            className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                              !canEdit
+                                ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
+                                : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer'
+                            }`}
+                            title={!canEdit ? 'Không có quyền sửa' : 'Sửa thông tin'}
+                            onClick={() => {
+                              if (!canEdit) return;
+                              openUserModal('edit', user);
+                            }}
+                          >
+                            <Pencil size={18} strokeWidth={2.5} />
+                          </button>
 
-                          {canEdit && (
-                            <button
-                              type="button"
-                              className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 ${
-                                profile.isLocked
-                                  ? 'border-amber-500 text-amber-600 hover:bg-amber-50'
-                                  : 'border-cyan-500 text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700'
-                              } bg-white shadow-sm transition cursor-pointer`}
-                              title={profile.isLocked ? 'Mở khóa tài khoản' : 'Khóa tài khoản'}
-                              onClick={() => openLockModal(user)}
-                            >
-                              {profile.isLocked ? (
-                                <Unlock size={18} strokeWidth={2.5} />
-                              ) : (
-                                <Lock size={18} strokeWidth={2.5} />
-                              )}
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            disabled={!canEdit}
+                            className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                              !canEdit
+                                ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
+                                : profile.isLocked
+                                ? 'border-amber-500 text-amber-600 hover:bg-amber-50 bg-white cursor-pointer'
+                                : 'border-cyan-500 text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 bg-white cursor-pointer'
+                            }`}
+                            title={!canEdit ? 'Không có quyền khóa/mở khóa' : profile.isLocked ? 'Mở khóa tài khoản' : 'Khóa tài khoản'}
+                            onClick={() => {
+                              if (!canEdit) return;
+                              openLockModal(user);
+                            }}
+                          >
+                            {profile.isLocked ? (
+                              <Unlock size={18} strokeWidth={2.5} />
+                            ) : (
+                              <Lock size={18} strokeWidth={2.5} />
+                            )}
+                          </button>
 
-                          {canDelete && (
-                            <button
-                              type="button"
-                              className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
-                              title="Xóa khách hàng"
-                              onClick={() => openUserModal('delete', user)}
-                            >
-                              <Trash2 size={18} strokeWidth={2.5} />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            disabled={!canDelete}
+                            className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                              !canDelete
+                                ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
+                                : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer'
+                            }`}
+                            title={!canDelete ? 'Không có quyền xóa' : 'Xóa khách hàng'}
+                            onClick={() => {
+                              if (!canDelete) return;
+                              openUserModal('delete', user);
+                            }}
+                          >
+                            <Trash2 size={18} strokeWidth={2.5} />
+                          </button>
                         </div>
                       </td>
                     </tr>

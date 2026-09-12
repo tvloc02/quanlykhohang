@@ -14,14 +14,12 @@ import {
   Settings,
   Maximize2,
   Minimize2,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
   SlidersHorizontal,
   X,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+
+import { getLocalDateString, getInitialReportDates, parseAnyDateToLocalString } from '../../../shared/utils/dateUtils';
 
 export interface BillProfitItem {
   id: string;
@@ -58,17 +56,11 @@ export default function BillProfitReportPage() {
   const [error, setError] = useState('');
 
   // Filters
-  const [fromDate, setFromDate] = useState(() => {
-    const d = new Date();
-    d.setMonth(d.getMonth() - 3);
-    return d.toISOString().split('T')[0];
-  });
-  const [toDate, setToDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const { firstDay, today } = useMemo(() => getInitialReportDates(90), []);
+  const [fromDate, setFromDate] = useState(firstDay);
+  const [toDate, setToDate] = useState(today);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Pagination states
-  const [pageSize, setPageSize] = useState(20);
-  const [currentPage, setCurrentPage] = useState(1);
 
   // Fullscreen state
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -140,52 +132,75 @@ export default function BillProfitReportPage() {
       }
 
       let itemsList: BillProfitItem[] = [];
+      const existingBills = new Set<string>();
+
+      const processOrder = (order: any, countRef: { val: number }) => {
+        const billCode = order.orderNo || order.code || `XBH_${String(order.id).slice(0, 6)}`;
+        const oType = String(order.orderType || '').toLowerCase();
+        if (oType === 'disposal' || billCode.startsWith('XH')) return;
+        if (['ĐÃ HỦY', 'CANCELLED', 'HỦY'].includes(String(order.status || '').toUpperCase())) return;
+        if (existingBills.has(billCode)) return;
+
+        const branchName = order.warehouseName || order.branchName || order.warehouse?.name || order.branchCode || order.branch || 'Kho Tổng';
+        const orderDate = parseAnyDateToLocalString(order.orderDate || order.createdAt);
+        const custName = order.customerName || (typeof order.customer === 'string' ? order.customer : order.customer?.name) || 'Khách hàng bán lẻ';
+
+        const details = Array.isArray(order.details) ? order.details : Array.isArray(order.items) ? order.items : [];
+
+        details.forEach((d: any) => {
+          const pCode = d.productCode || d.productSku || d.product?.internalSku || d.sku || '';
+          const pName = d.productName || d.product?.name || 'Sản phẩm kinh doanh';
+          const exportQty = Number(d.requiredQty || d.pickedQty || d.qty || d.quantity || 0);
+          const exportPrice = Number(d.unitPrice || d.price || 1000000);
+          const revenue = exportQty * exportPrice;
+
+          const matchedProd = productsMap.get(pCode);
+          const importPrice = matchedProd ? matchedProd.importPrice : Math.round(exportPrice * 0.7);
+          const totalCost = exportQty * importPrice;
+          const profit = revenue - totalCost;
+          const profitMargin = revenue > 0 ? (profit / revenue) * 100 : 0;
+
+          itemsList.push({
+            id: `${order.id || billCode}-${countRef.val}`,
+            stt: countRef.val++,
+            billCode,
+            branchName,
+            productCode: pCode,
+            productName: pName,
+            exportQty,
+            exportPrice,
+            revenue,
+            importPrice,
+            totalCost,
+            profit,
+            profitMargin: Math.round(profitMargin * 100) / 100,
+            date: orderDate,
+            customerName: custName,
+          });
+        });
+
+        existingBills.add(billCode);
+      };
+
+      let countRef = { val: 1 };
       if (outboundRes && outboundRes.ok) {
         const outboundData = await outboundRes.json();
         if (Array.isArray(outboundData)) {
-          let count = 1;
-          outboundData.forEach((order: any) => {
-            const billCode = order.orderNo || order.code || `XBH_${String(order.id).slice(0, 6)}`;
-            const branchName = order.warehouseName || order.branchName || order.warehouse?.name || order.branch || 'Kho Tổng Hồ Chí Minh';
-            const orderDate = order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-            const custName = order.customer || order.customerName || 'Khách hàng lẻ';
-
-            const details = Array.isArray(order.details) ? order.details : Array.isArray(order.items) ? order.items : [];
-
-            details.forEach((d: any) => {
-              const pCode = d.productCode || d.productSku || d.product?.internalSku || d.sku || '';
-              const pName = d.productName || d.product?.name || 'Sản phẩm kinh doanh';
-              const exportQty = Number(d.requiredQty || d.pickedQty || d.qty || d.quantity || 0);
-              const exportPrice = Number(d.unitPrice || d.price || 1000000);
-              const revenue = exportQty * exportPrice;
-
-              const matchedProd = productsMap.get(pCode);
-              const importPrice = matchedProd ? matchedProd.importPrice : Math.round(exportPrice * 0.7);
-              const totalCost = exportQty * importPrice;
-              const profit = revenue - totalCost;
-              const profitMargin = revenue > 0 ? (profit / revenue) * 100 : 0;
-
-              itemsList.push({
-                id: `${order.id}-${count}`,
-                stt: count++,
-                billCode,
-                branchName,
-                productCode: pCode,
-                productName: pName,
-                exportQty,
-                exportPrice,
-                revenue,
-                importPrice,
-                totalCost,
-                profit,
-                profitMargin: Math.round(profitMargin * 100) / 100,
-                date: orderDate,
-                customerName: custName,
-              });
-            });
-          });
+          outboundData.forEach((order: any) => processOrder(order, countRef));
         }
       }
+
+      // Hợp nhất stored_outbound_orders từ localStorage
+      try {
+        const rawLocal = localStorage.getItem('stored_outbound_orders');
+        if (rawLocal) {
+          const localList: any[] = JSON.parse(rawLocal);
+          if (Array.isArray(localList)) {
+            localList.forEach((order: any) => processOrder(order, countRef));
+          }
+        }
+      } catch {}
+
       setReportData(itemsList);
     } catch (err: any) {
       setError(err?.message || 'Không thể tải dữ liệu báo cáo lợi nhuận');
@@ -196,6 +211,16 @@ export default function BillProfitReportPage() {
 
   useEffect(() => {
     fetchProfitReport();
+  }, []);
+
+  useEffect(() => {
+    const handleOrderEvent = () => fetchProfitReport();
+    window.addEventListener('outbound-order-created', handleOrderEvent);
+    window.addEventListener('storage', handleOrderEvent);
+    return () => {
+      window.removeEventListener('outbound-order-created', handleOrderEvent);
+      window.removeEventListener('storage', handleOrderEvent);
+    };
   }, []);
 
   const filteredData = useMemo(() => {
@@ -214,9 +239,6 @@ export default function BillProfitReportPage() {
     });
   }, [reportData, searchQuery, fromDate, toDate]);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, fromDate, toDate]);
 
   // Totals calculations
   const totalExportQty = filteredData.reduce((sum, i) => sum + i.exportQty, 0);
@@ -232,14 +254,7 @@ export default function BillProfitReportPage() {
     (columnVis.productCode ? 1 : 0) +
     (columnVis.productName ? 1 : 0);
 
-  const totalItems = filteredData.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-  const startIndex = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
-  const endIndex = Math.min(currentPage * pageSize, totalItems);
-  const paginatedData = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredData.slice(start, start + pageSize);
-  }, [filteredData, currentPage, pageSize]);
+  const paginatedData = filteredData;
 
   const handleExportExcel = () => {
     if (filteredData.length === 0) return;
@@ -372,10 +387,7 @@ export default function BillProfitReportPage() {
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setCurrentPage(1);
-              }}
+              onChange={(e) => setSearchQuery(e.target.value)}
               className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-4 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-2xs"
               placeholder="Tìm theo mã HĐ, chi nhánh, mã SP, tên sản phẩm..."
             />
@@ -392,20 +404,14 @@ export default function BillProfitReportPage() {
               <input
                 type="date"
                 value={fromDate}
-                onChange={(e) => {
-                  setFromDate(e.target.value);
-                  setCurrentPage(1);
-                }}
+                onChange={(e) => setFromDate(e.target.value)}
                 className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
               />
               <span className="text-xs font-bold text-slate-600">Đến</span>
               <input
                 type="date"
                 value={toDate}
-                onChange={(e) => {
-                  setToDate(e.target.value);
-                  setCurrentPage(1);
-                }}
+                onChange={(e) => setToDate(e.target.value)}
                 className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
               />
             </div>
@@ -500,7 +506,7 @@ export default function BillProfitReportPage() {
                 </tr>
               ) : (
                 paginatedData.map((item, index) => {
-                  const globalIndex = (currentPage - 1) * pageSize + index + 1;
+                  const globalIndex = index + 1;
                   const isNegative = item.profit < 0;
 
                   return (
@@ -628,71 +634,11 @@ export default function BillProfitReportPage() {
           </table>
         </div>
 
-        {/* PAGINATION FOOTER ATTACHED */}
-        {totalItems > 0 && (
-          <div className="flex flex-col items-center justify-between border-t-2 border-slate-200 bg-white px-5 py-3 sm:flex-row text-xs font-bold text-slate-700">
-            <div className="font-semibold text-slate-600">
-              Hiển thị <span className="font-bold text-slate-900">{startIndex} - {endIndex}</span> trong tổng số <span className="font-bold text-slate-900">{totalItems}</span> bản ghi
-            </div>
-            <div className="mt-3 flex items-center gap-3 sm:mt-0">
-              <div className="flex items-center gap-2">
-                <span className="text-slate-500 font-bold">Hiển thị:</span>
-                <select
-                  value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(Number(e.target.value));
-                    setCurrentPage(1);
-                  }}
-                  className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none cursor-pointer"
-                >
-                  <option value={10}>10 dòng/trang</option>
-                  <option value={20}>20 dòng/trang</option>
-                  <option value={50}>50 dòng/trang</option>
-                  <option value={100}>100 dòng/trang</option>
-                </select>
-              </div>
-
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage(1)}
-                  disabled={currentPage === 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
-                  title="Trang đầu"
-                >
-                  <ChevronsLeft className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
-                  title="Trang trước"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <span className="px-3 py-1 font-bold text-slate-800 bg-slate-100 rounded-lg text-xs">
-                  {currentPage} / {totalPages}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
-                  title="Trang sau"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage(totalPages)}
-                  disabled={currentPage === totalPages}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
-                  title="Trang cuối"
-                >
-                  <ChevronsRight className="h-4 w-4" />
-                </button>
-              </div>
+        {/* SUMMARY FOOTER */}
+        {filteredData.length > 0 && (
+          <div className="flex items-center justify-between border-t border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-500 print:hidden">
+            <div>
+              Tổng cộng <span className="font-bold text-slate-900">{filteredData.length}</span> bản ghi
             </div>
           </div>
         )}

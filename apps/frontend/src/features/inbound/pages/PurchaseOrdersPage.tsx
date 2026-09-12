@@ -256,8 +256,10 @@ function isWarehouseAssignedToUser(userId: string, warehouse: WarehouseRecord) {
 }
 
 function getWarehouseOptionsForUser(userId: string, warehouses: WarehouseRecord[]) {
-  if (!userId) return warehouses || [];
-  return (warehouses || []).filter((warehouse) => isWarehouseAssignedToUser(userId, warehouse));
+  const unfrozen = (warehouses || []).filter((warehouse) => !warehouse.isFrozen);
+  if (!userId) return unfrozen;
+  const assigned = unfrozen.filter((warehouse) => isWarehouseAssignedToUser(userId, warehouse));
+  return assigned.length > 0 ? assigned : unfrozen;
 }
 
 function getApproversForWarehouse(warehouse: WarehouseRecord | null, users: PurchaseOrderUser[]) {
@@ -633,7 +635,7 @@ function PurchaseOrdersPageContent() {
 
   React.useEffect(() => {
     if (!toast) return;
-    const timer = window.setTimeout(() => setToast(null), 3500);
+    const timer = window.setTimeout(() => setToast(null), 3000);
     return () => window.clearTimeout(timer);
   }, [toast]);
 
@@ -1071,7 +1073,15 @@ function PurchaseOrdersPageContent() {
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (form.items.length === 0) {
-      setToast({ type: 'error', message: 'Vui lòng thêm ít nhất một dòng hàng.' });
+      setToast({ type: 'error', message: 'Phiếu đơn mua hàng phải có ít nhất 1 hàng hóa!' });
+      return;
+    }
+
+    const invalidQtyItem = form.items.find((item) => !Number(item.expectedQty) || Number(item.expectedQty) < 1);
+    if (invalidQtyItem) {
+      const matchedProd = supplierProducts.find((p) => p.product?.id === invalidQtyItem.productId || p.id === invalidQtyItem.productId);
+      const prodName = matchedProd?.product?.name || matchedProd?.product?.internalSku || matchedProd?.supplierSku || 'mặt hàng';
+      setToast({ type: 'error', message: `Số lượng của mặt hàng "${prodName}" phải lớn hơn hoặc bằng 1!` });
       return;
     }
 
@@ -1548,9 +1558,10 @@ function PurchaseOrdersPageContent() {
   return (
     <div className={`space-y-6 ${isFullScreen ? 'fixed inset-0 z-[9000] overflow-y-auto bg-white p-6' : ''}`}>
       {toast && (
-        <div className={`fixed right-6 top-24 z-[70] flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-xl ${toast.type === 'error' ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-600'}`}>
+        <div className={`fixed right-6 top-24 z-[70] flex items-center gap-3 rounded-xl border px-4 py-3 shadow-lg ${toast.type === 'error' ? 'bg-red-50 border-red-200 text-red-600' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
+          {toast.type === 'error' ? <XCircle className="h-5 w-5 shrink-0 text-red-600" /> : <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />}
           <p className="text-sm font-bold">{toast.message}</p>
-          <button type="button" onClick={() => setToast(null)} className="rounded-lg p-1 hover:bg-slate-100">
+          <button type="button" onClick={() => setToast(null)} className="rounded-lg p-1 hover:bg-black/5 transition cursor-pointer">
             <X className="h-4 w-4" />
           </button>
         </div>

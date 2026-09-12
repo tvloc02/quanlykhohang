@@ -50,9 +50,34 @@ interface LayoutProps {
 }
 
 export default function MainLayout({ children }: LayoutProps) {
-  const [sidebarOpen, setSidebarOpen] = React.useState(true);
+  const [sidebarOpen, setSidebarOpen] = React.useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth >= 1024;
+    }
+    return true;
+  });
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Close sidebar on mobile when navigating
+  React.useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
+  }, [location.pathname]);
+
+  // Handle responsive resize
+  React.useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1024) {
+        setSidebarOpen(false);
+      } else {
+        setSidebarOpen(true);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   const storedUser = React.useMemo(() => {
     try {
       return JSON.parse(localStorage.getItem('user') || '{}') as { email?: string; fullName?: string; role?: string };
@@ -221,33 +246,41 @@ export default function MainLayout({ children }: LayoutProps) {
   });
 
   return (
-    <div className="flex h-screen print:h-auto print:overflow-visible bg-slate-50 dark:bg-[#060913] print:bg-white font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300">
+    <div className="flex h-screen print:h-auto print:overflow-visible bg-slate-50 dark:bg-[#060913] print:bg-white font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300 relative overflow-hidden">
+      {/* Mobile Backdrop Overlay when Sidebar is Open */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 lg:hidden transition-opacity duration-300"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar Component */}
       <div className="print:hidden">
         <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
       </div>
 
       {/* Main Content Area */}
-      <div className={`${sidebarOpen ? 'ml-80' : 'ml-20'} flex-1 flex flex-col overflow-hidden print:overflow-visible print:ml-0 lg:ml-0 transition-all duration-300`}>
+      <div className="flex-1 min-w-0 flex flex-col overflow-hidden print:overflow-visible print:ml-0 transition-all duration-300">
         {/* Sync Status Banner */}
         <div className="print:hidden">
           <SyncStatusBanner />
         </div>
 
         {/* Header matching dem.cmcu.edu.vn sample */}
-        <header className="relative bg-white dark:bg-[#090d16] border-b-2 border-slate-200 dark:border-slate-800/80 flex items-center justify-between px-6 z-40 transition-all duration-300 h-20 box-border shadow-xs print:hidden">
+        <header className="relative bg-white dark:bg-[#090d16] border-b-2 border-slate-200 dark:border-slate-800/80 flex items-center justify-between px-3 sm:px-6 z-40 transition-all duration-300 h-16 sm:h-20 box-border shadow-xs print:hidden">
           {/* Left Section: Toggle & Clock */}
-          <div className="flex items-center gap-4 flex-shrink-0">
+          <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
               title={sidebarOpen ? "Đóng menu" : "Mở menu"}
               aria-label={sidebarOpen ? "Đóng menu" : "Mở menu"}
-              className="h-[3.5rem] w-[3.5rem] flex items-center justify-center bg-white dark:bg-[#0f172a] border-2 border-slate-200 dark:border-slate-800/80 hover:bg-cyan-50 dark:hover:bg-[#1a233a] rounded-xl transition-all group lg:hidden cursor-pointer"
+              className="h-10 w-10 sm:h-[3.5rem] sm:w-[3.5rem] flex items-center justify-center bg-white dark:bg-[#0f172a] border-2 border-slate-200 dark:border-slate-800/80 hover:bg-cyan-50 dark:hover:bg-[#1a233a] rounded-xl transition-all group lg:hidden cursor-pointer shrink-0"
             >
               {sidebarOpen ? (
-                <X size={20} className="text-slate-600 dark:text-blue-200 group-hover:text-cyan-600 dark:group-hover:text-blue-400" />
+                <X size={18} className="text-slate-600 dark:text-blue-200 group-hover:text-cyan-600 dark:group-hover:text-blue-400" />
               ) : (
-                <Menu size={20} className="text-slate-600 dark:text-blue-200 group-hover:text-cyan-600 dark:group-hover:text-blue-400" />
+                <Menu size={18} className="text-slate-600 dark:text-blue-200 group-hover:text-cyan-600 dark:group-hover:text-blue-400" />
               )}
             </button>
 
@@ -299,7 +332,7 @@ export default function MainLayout({ children }: LayoutProps) {
           <div className="flex items-center space-x-3 flex-shrink-0">
 
             {/* Notifications Dropdown */}
-            <div className="relative dropdown-container">
+            <div className="relative dropdown-container z-50">
               <div className="relative">
                 {unreadCount > 0 && <div className="absolute inset-0 bg-gradient-to-r from-red-400 to-pink-500 rounded-xl blur-md opacity-50 animate-pulse"></div>}
                 <button
@@ -309,11 +342,11 @@ export default function MainLayout({ children }: LayoutProps) {
                   }}
                   title="Thông báo"
                   aria-label="Thông báo"
-                  className="relative h-[3.5rem] w-[3.5rem] rounded-xl bg-white dark:bg-[#0f172a] hover:bg-cyan-50 dark:hover:bg-[#1a233a] transition-colors border-2 border-slate-200 dark:border-slate-800 flex items-center justify-center cursor-pointer"
+                  className="relative h-10 w-10 sm:h-[3.5rem] sm:w-[3.5rem] rounded-xl bg-white dark:bg-[#0f172a] hover:bg-cyan-50 dark:hover:bg-[#1a233a] transition-colors border-2 border-slate-200 dark:border-slate-800 flex items-center justify-center cursor-pointer"
                 >
-                  <Bell className="h-5 w-5 text-slate-600 dark:text-indigo-200" />
+                  <Bell className="h-4 w-4 sm:h-5 sm:w-5 text-slate-600 dark:text-indigo-200" />
                   {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 h-6 w-6 bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs rounded-full flex items-center justify-center font-bold shadow-lg">
+                    <span className="absolute -top-1 -right-1 h-5 w-5 sm:h-6 sm:w-6 bg-gradient-to-r from-red-500 to-pink-500 text-white text-[10px] sm:text-xs rounded-full flex items-center justify-center font-bold shadow-lg">
                       {unreadCount}
                     </span>
                   )}
@@ -321,7 +354,7 @@ export default function MainLayout({ children }: LayoutProps) {
               </div>
 
               {notificationDropdownOpen && (
-                <div className="fixed left-3 right-3 top-[84px] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[30rem] bg-white dark:bg-[#0f172a] rounded-xl shadow-2xl border-2 border-slate-200 dark:border-slate-800 z-50 max-h-[calc(100vh-96px)] sm:max-h-[36rem] overflow-hidden">
+                <div className="fixed left-3 right-3 top-[84px] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[30rem] bg-white dark:bg-[#0f172a] rounded-xl shadow-2xl border-2 border-slate-200 dark:border-slate-800 z-[60] max-h-[calc(100vh-96px)] sm:max-h-[36rem] overflow-hidden">
                   <div className="px-4 py-3 border-b-2 border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#090d16]">
                     <div className="flex items-center justify-between">
                       <div>
@@ -413,26 +446,26 @@ export default function MainLayout({ children }: LayoutProps) {
             </div>
 
             {/* User Profile Dropdown */}
-            <div className="relative dropdown-container">
+            <div className="relative dropdown-container z-50">
               <button
                 onClick={() => {
                   setNotificationDropdownOpen(false);
                   setUserDropdownOpen(!userDropdownOpen);
                 }}
-                className="flex items-center space-x-2 p-2 rounded-xl bg-white dark:bg-[#0f172a] hover:bg-cyan-50 dark:hover:bg-[#1a233a] transition-colors border-2 border-slate-200 dark:border-slate-800 h-[3.5rem] cursor-pointer"
+                className="flex items-center space-x-1.5 sm:space-x-2 p-1.5 sm:p-2 rounded-xl bg-white dark:bg-[#0f172a] hover:bg-cyan-50 dark:hover:bg-[#1a233a] transition-colors border-2 border-slate-200 dark:border-slate-800 h-10 sm:h-[3.5rem] cursor-pointer"
               >
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-md overflow-hidden bg-gradient-to-br from-indigo-600 to-blue-600 text-white font-bold text-sm">
+                <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl flex items-center justify-center shadow-md overflow-hidden bg-gradient-to-br from-indigo-600 to-blue-600 text-white font-bold text-xs sm:text-sm">
                   {userInitials}
                 </div>
-                <div className="hidden sm:block text-left">
-                  <p className="text-sm font-extrabold text-slate-900 dark:text-slate-100">{userName}</p>
-                  <p className="text-xs font-bold text-slate-500 dark:text-indigo-300">{userRole}</p>
+                <div className="hidden md:block text-left">
+                  <p className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100">{userName}</p>
+                  <p className="text-[11px] sm:text-xs font-medium text-slate-500 dark:text-indigo-300 max-w-[140px] truncate">{userEmail}</p>
                 </div>
-                <ChevronDown className="h-4 w-4 text-slate-500 dark:text-indigo-300" />
+                <ChevronDown className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-slate-500 dark:text-indigo-300" />
               </button>
 
               {userDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-[#0f172a] rounded-xl shadow-2xl py-2 z-50 border-2 border-slate-200 dark:border-slate-800">
+                <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-[#0f172a] rounded-xl shadow-2xl py-2 z-[60] border-2 border-slate-200 dark:border-slate-800">
                   <div className="px-4 pb-2 mb-2 border-b-2 border-slate-200 dark:border-slate-800">
                     <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{userName}</p>
                     <p className="text-xs text-slate-500 dark:text-indigo-300 truncate">{userEmail}</p>
@@ -476,7 +509,7 @@ export default function MainLayout({ children }: LayoutProps) {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto print:overflow-visible print:p-0 print:bg-white p-6 bg-slate-50 dark:bg-[#060913] transition-colors duration-300">
+        <main className="flex-1 min-w-0 overflow-y-auto print:overflow-visible print:p-0 print:bg-white p-3 sm:p-4 md:p-6 bg-slate-50 dark:bg-[#060913] transition-colors duration-300">
           {children || (
             <div className="flex items-center justify-center h-full text-slate-400 dark:text-indigo-300/60 font-semibold text-xs">
               Nội dung trang web sẽ hiển thị ở đây

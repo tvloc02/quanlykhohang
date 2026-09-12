@@ -183,10 +183,10 @@ export default function Delivery() {
   const loadOrders = useCallback(async () => {
     try {
       const data = await deliveryApi.listTransferOrders();
-      setOrders(data);
-    } catch (error) {
-      console.error(error);
-      setToast({ type: 'error', message: 'Không tải được phiếu điều chuyển' });
+      setOrders(Array.isArray(data) ? data : []);
+    } catch (error: any) {
+      console.error('Lỗi tải phiếu điều chuyển:', error);
+      setToast({ type: 'error', message: error?.message || 'Không tải được phiếu điều chuyển' });
     }
   }, []);
 
@@ -212,8 +212,8 @@ export default function Delivery() {
 
   const handleApproveOrder = async (order: TransferOrder) => {
     try {
-      await deliveryApi.updateTransferOrder(order.id, { status: 'APPROVED' });
-      setToast({ type: 'success', message: `Đã duyệt thành công phiếu xuất kho ${order.transferNo}` });
+      await deliveryApi.updateTransferOrder(order.id, { status: 'IN_TRANSIT' });
+      setToast({ type: 'success', message: `Đã duyệt và chuyển sang trạng thái đang giao phiếu xuất kho ${order.transferNo}` });
       await loadOrders();
     } catch (err: any) {
       setToast({ type: 'error', message: err?.message || 'Lỗi khi duyệt phiếu xuất kho' });
@@ -957,19 +957,25 @@ export default function Delivery() {
         initialData={
           selectedOrder
             ? {
-                commandNo: `12/LDD-${selectedOrder.transferNo || 'KTTU'}`,
+                noteNo: selectedOrder.transferNo,
+                commandNo: selectedOrder.transferNo ? `12/LĐĐ-${selectedOrder.transferNo}` : undefined,
+                sourceWarehouse: renderWarehouse(selectedOrder.sourceWarehouse, warehouses),
+                destinationWarehouse: renderWarehouse(selectedOrder.destinationWarehouse, warehouses),
                 sourceAddress: renderWarehouse(selectedOrder.sourceWarehouse, warehouses),
-                receiverName: renderCreator(selectedOrder.createdBy),
                 destinationAddress: renderWarehouse(selectedOrder.destinationWarehouse, warehouses),
+                transporterName: selectedOrder.driverName || undefined,
+                vehicle: selectedOrder.vehiclePlate || undefined,
+                dispatchDate: selectedOrder.dispatchDate || selectedOrder.scheduledDate || selectedOrder.createdAt || undefined,
+                creatorName: renderCreator(selectedOrder.createdBy),
                 items: selectedOrder.items && selectedOrder.items.length > 0
-                  ? selectedOrder.items.map((item, idx) => ({
+                  ? selectedOrder.items.map((item: any, idx: number) => ({
                       id: item.id || String(idx + 1),
                       productName: item.productName || 'Sản phẩm điều chuyển',
                       productCode: item.productCode || 'SKU-001',
                       unit: item.unit || 'Cái',
                       quantityExported: Number(item.quantity) || 1,
                       quantityImported: Number(item.quantity) || 1,
-                      price: 10000000,
+                      price: Number(item.price || item.unitPrice || 150000),
                     }))
                   : undefined,
               }

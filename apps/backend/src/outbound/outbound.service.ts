@@ -73,22 +73,46 @@ function parseNumber(value: unknown) {
 
 function parseCustomDate(dateStr?: string | Date | null): Date {
   if (!dateStr) return new Date();
-  if (dateStr instanceof Date) return dateStr;
+  if (dateStr instanceof Date) return isNaN(dateStr.getTime()) ? new Date() : dateStr;
   const str = String(dateStr).trim();
-  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (!str) return new Date();
+
+  // 1. ISO strings with timezone (ends with Z or +/-offset)
+  if (str.includes('Z') || /[+-]\d{2}(?::?\d{2})?$/.test(str)) {
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // 2. DD/MM/YYYY [HH:mm[:ss]]
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:[\sT]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
   if (dmyMatch) {
-    const day = parseInt(dmyMatch[1], 10);
-    const month = parseInt(dmyMatch[2], 10) - 1;
-    const year = parseInt(dmyMatch[3], 10);
-    return new Date(year, month, day, 12, 0, 0);
+    const day = String(dmyMatch[1]).padStart(2, '0');
+    const month = String(dmyMatch[2]).padStart(2, '0');
+    const year = dmyMatch[3];
+    const now = new Date();
+    const hours = dmyMatch[4] !== undefined ? String(dmyMatch[4]).padStart(2, '0') : String(now.getHours()).padStart(2, '0');
+    const minutes = dmyMatch[5] !== undefined ? String(dmyMatch[5]).padStart(2, '0') : String(now.getMinutes()).padStart(2, '0');
+    const seconds = dmyMatch[6] !== undefined ? String(dmyMatch[6]).padStart(2, '0') : String(now.getSeconds()).padStart(2, '0');
+    const d = new Date(`${year}-${month}-${day}T${hours}:${minutes}:${seconds}+07:00`);
+    if (!isNaN(d.getTime())) return d;
+    return new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10), parseInt(hours, 10), parseInt(minutes, 10), parseInt(seconds, 10));
   }
-  const ymdMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+
+  // 3. YYYY-MM-DD [T| ] [HH:mm[:ss]] (without Z or offset -> GMT+7)
+  const ymdMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:[\sT]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
   if (ymdMatch) {
-    const year = parseInt(ymdMatch[1], 10);
-    const month = parseInt(ymdMatch[2], 10) - 1;
-    const day = parseInt(ymdMatch[3], 10);
-    return new Date(year, month, day, 12, 0, 0);
+    const year = ymdMatch[1];
+    const month = String(ymdMatch[2]).padStart(2, '0');
+    const day = String(ymdMatch[3]).padStart(2, '0');
+    const now = new Date();
+    const hours = ymdMatch[4] !== undefined ? String(ymdMatch[4]).padStart(2, '0') : String(now.getHours()).padStart(2, '0');
+    const minutes = ymdMatch[5] !== undefined ? String(ymdMatch[5]).padStart(2, '0') : String(now.getMinutes()).padStart(2, '0');
+    const seconds = ymdMatch[6] !== undefined ? String(ymdMatch[6]).padStart(2, '0') : String(now.getSeconds()).padStart(2, '0');
+    const d = new Date(`${year}-${month}-${day}T${hours}:${minutes}:${seconds}+07:00`);
+    if (!isNaN(d.getTime())) return d;
+    return new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10), parseInt(hours, 10), parseInt(minutes, 10), parseInt(seconds, 10));
   }
+
   const parsed = new Date(str);
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
@@ -187,38 +211,48 @@ export class OutboundService implements OnModuleInit {
       pointsAvailable: dto.pointsAvailable || 0,
     });
 
-    // Attach customer by id or name
-    let attachedCustomer: Customer | null = null;
-    if (dto.customerId && /^\d+$/.test(String(dto.customerId))) {
-      attachedCustomer = await this.customerRepo.findOneBy({ id: String(dto.customerId) });
-    }
-
-    const customerText = (dto.customer || dto.customerName || '').trim();
-    if (!attachedCustomer && customerText) {
-      attachedCustomer = await this.customerRepo.findOne({
-        where: [{ name: customerText }, { customerCode: customerText }],
-      });
-
-      if (!attachedCustomer) {
-        try {
-          const newCust = this.customerRepo.create({
-            name: customerText,
-            customerCode: 'KH-' + Date.now().toString().slice(-6),
-            phone: dto.customerPhone?.trim() || undefined,
-            address: dto.customerAddress?.trim() || undefined,
-          });
-          attachedCustomer = await this.customerRepo.save(newCust);
-        } catch { }
-      }
-    }
-
-    if (attachedCustomer) {
-      order.customer = attachedCustomer;
-      order.customerName = attachedCustomer.name;
-      if (!order.customerPhone) order.customerPhone = attachedCustomer.phone;
-      if (!order.customerAddress) order.customerAddress = attachedCustomer.address;
+    // Attach customer by id or name (Không tạo hoặc gán khách hàng nếu là đơn xuất hủy tiêu hủy hàng hóa)
+    const isDisposalOrder = (dto.orderType === 'disposal') || (orderNo && orderNo.startsWith('XH'));
+    if (isDisposalOrder) {
+      order.customer = null as any;
+      order.customerName = 'Xuất hủy nội bộ';
+      order.customerPhone = undefined;
+      order.customerAddress = undefined;
+      order.debt = '0.00';
+      order.amountPaid = '0.00';
     } else {
-      order.customerName = customerText || '888 - Khách lẻ';
+      let attachedCustomer: Customer | null = null;
+      if (dto.customerId && /^\d+$/.test(String(dto.customerId))) {
+        attachedCustomer = await this.customerRepo.findOneBy({ id: String(dto.customerId) });
+      }
+
+      const customerText = (dto.customer || dto.customerName || '').trim();
+      if (!attachedCustomer && customerText) {
+        attachedCustomer = await this.customerRepo.findOne({
+          where: [{ name: customerText }, { customerCode: customerText }],
+        });
+
+        if (!attachedCustomer) {
+          try {
+            const newCust = this.customerRepo.create({
+              name: customerText,
+              customerCode: 'KH-' + Date.now().toString().slice(-6),
+              phone: dto.customerPhone?.trim() || undefined,
+              address: dto.customerAddress?.trim() || undefined,
+            });
+            attachedCustomer = await this.customerRepo.save(newCust);
+          } catch { }
+        }
+      }
+
+      if (attachedCustomer) {
+        order.customer = attachedCustomer;
+        order.customerName = attachedCustomer.name;
+        if (!order.customerPhone) order.customerPhone = attachedCustomer.phone;
+        if (!order.customerAddress) order.customerAddress = attachedCustomer.address;
+      } else {
+        order.customerName = customerText || '888 - Khách lẻ';
+      }
     }
 
     const savedOrder = await this.orderRepo.save(order);
@@ -226,8 +260,11 @@ export class OutboundService implements OnModuleInit {
     // Persist detail items if provided
     if (dto.details?.length) {
       const savedDetails = await this.persistDetails(savedOrder.id, dto.details, savedOrder.branchCode);
-      // Deduct inventory for outbound sales order
-      await this.applyInventoryDeduction(savedOrder, savedDetails);
+      // Deduct inventory ONLY for finalized outbound orders, NEVER for drafts
+      const isDraft = ['DRAFT', 'Lưu tạm', 'draft'].includes(savedOrder.status || '');
+      if (!isDraft) {
+        await this.applyInventoryDeduction(savedOrder, savedDetails);
+      }
     }
 
     try {
@@ -249,15 +286,14 @@ export class OutboundService implements OnModuleInit {
   async updateOutbound(id: string, dto: CreateOutboundOrderDto) {
     const order = await this.findOrderEntity(id);
 
-    // Update orderNo if provided and different
-    if (dto.orderNo && dto.orderNo !== order.orderNo) {
-      const nextNo = dto.orderNo.trim().toUpperCase();
-      const dup = await this.orderRepo.findOne({ where: { orderNo: nextNo } });
-      if (dup && dup.id !== order.id) {
-        throw new BadRequestException('Mã đơn xuất đã tồn tại');
-      }
-      order.orderNo = nextNo;
+    // Kiểm tra quyền sửa: Chỉ phiếu ở trạng thái Lưu nháp (DRAFT / Lưu tạm) mới được phép sửa
+    const isCurrentDraft = ['DRAFT', 'Lưu tạm', 'draft'].includes(order.status || '');
+    if (!isCurrentDraft) {
+      throw new BadRequestException('Chỉ phiếu xuất ở trạng thái Lưu nháp mới được phép chỉnh sửa. Phiếu đã xuất kho/tạo mới chính thức không thể sửa!');
     }
+
+    // Tuyệt đối không cho phép sửa mã phiếu: giữ nguyên order.orderNo
+    // Bỏ qua dto.orderNo nếu có truyền lên
 
     if (dto.branchCode !== undefined) order.branchCode = dto.branchCode.trim() || 'KHO-NVL';
     if (dto.employeeName !== undefined) order.employeeName = dto.employeeName.trim() || 'Quản trị viên hệ thống';
@@ -265,38 +301,48 @@ export class OutboundService implements OnModuleInit {
     if (dto.customerPhone !== undefined) order.customerPhone = dto.customerPhone.trim() || undefined;
     if (dto.customerAddress !== undefined) order.customerAddress = dto.customerAddress.trim() || undefined;
 
-    // Update customer
-    let attachedCustomer: Customer | null = null;
-    if (dto.customerId && /^\d+$/.test(String(dto.customerId))) {
-      attachedCustomer = await this.customerRepo.findOneBy({ id: String(dto.customerId) });
-    }
-
-    const updateCustText = (dto.customer || dto.customerName || '').trim();
-    if (!attachedCustomer && updateCustText) {
-      attachedCustomer = await this.customerRepo.findOne({
-        where: [{ name: updateCustText }, { customerCode: updateCustText }],
-      });
-
-      if (!attachedCustomer) {
-        try {
-          const newCust = this.customerRepo.create({
-            name: updateCustText,
-            customerCode: 'KH-' + Date.now().toString().slice(-6),
-            phone: dto.customerPhone?.trim() || undefined,
-            address: dto.customerAddress?.trim() || undefined,
-          });
-          attachedCustomer = await this.customerRepo.save(newCust);
-        } catch { }
+    // Update customer (Không tạo hoặc gán khách hàng nếu là đơn xuất hủy)
+    const isDisposalOrder = (dto.orderType === 'disposal') || (order.orderType === 'disposal') || (order.orderNo && order.orderNo.startsWith('XH'));
+    if (isDisposalOrder) {
+      order.customer = null as any;
+      order.customerName = 'Xuất hủy nội bộ';
+      order.customerPhone = undefined;
+      order.customerAddress = undefined;
+      order.debt = '0.00';
+      order.amountPaid = '0.00';
+    } else {
+      let attachedCustomer: Customer | null = null;
+      if (dto.customerId && /^\d+$/.test(String(dto.customerId))) {
+        attachedCustomer = await this.customerRepo.findOneBy({ id: String(dto.customerId) });
       }
-    }
 
-    if (attachedCustomer) {
-      order.customer = attachedCustomer;
-      order.customerName = attachedCustomer.name;
-      if (dto.customerPhone) order.customerPhone = dto.customerPhone.trim();
-      if (dto.customerAddress) order.customerAddress = dto.customerAddress.trim();
-    } else if (updateCustText) {
-      order.customerName = updateCustText;
+      const updateCustText = (dto.customer || dto.customerName || '').trim();
+      if (!attachedCustomer && updateCustText) {
+        attachedCustomer = await this.customerRepo.findOne({
+          where: [{ name: updateCustText }, { customerCode: updateCustText }],
+        });
+
+        if (!attachedCustomer) {
+          try {
+            const newCust = this.customerRepo.create({
+              name: updateCustText,
+              customerCode: 'KH-' + Date.now().toString().slice(-6),
+              phone: dto.customerPhone?.trim() || undefined,
+              address: dto.customerAddress?.trim() || undefined,
+            });
+            attachedCustomer = await this.customerRepo.save(newCust);
+          } catch { }
+        }
+      }
+
+      if (attachedCustomer) {
+        order.customer = attachedCustomer;
+        order.customerName = attachedCustomer.name;
+        if (dto.customerPhone) order.customerPhone = dto.customerPhone.trim();
+        if (dto.customerAddress) order.customerAddress = dto.customerAddress.trim();
+      } else if (updateCustText) {
+        order.customerName = updateCustText;
+      }
     }
 
     if (dto.orderDate) {
@@ -327,9 +373,19 @@ export class OutboundService implements OnModuleInit {
     if (dto.pointsUsed !== undefined) order.pointsUsed = dto.pointsUsed;
     if (dto.pointsAvailable !== undefined) order.pointsAvailable = dto.pointsAvailable;
 
+    // Update item count if details provided
+    if (dto.details?.length) {
+      order.items = dto.details.length;
+    }
+
+    // Save order fields first
+    await this.orderRepo.save(order);
+
     // Replace details if provided
     if (dto.details?.length) {
-      await this.revertInventoryDeduction(order);
+      if (!isCurrentDraft) {
+        await this.revertInventoryDeduction(order);
+      }
 
       const existing = await this.detailRepo.find({
         where: { outboundOrder: { id } as any },
@@ -339,18 +395,29 @@ export class OutboundService implements OnModuleInit {
         await this.detailRepo.remove(existing);
       }
       const savedDetails = await this.persistDetails(id, dto.details, order.branchCode);
-      await this.applyInventoryDeduction(order, savedDetails);
+
+      const isNowDraft = ['DRAFT', 'Lưu tạm', 'draft'].includes(dto.status || order.status || '');
+      if (!isNowDraft) {
+        await this.applyInventoryDeduction(order, savedDetails);
+      }
+    } else if (dto.status && !['DRAFT', 'Lưu tạm', 'draft'].includes(dto.status || '') && isCurrentDraft) {
+      // Chuyển từ DRAFT sang xuất chính thức mà không đổi details
+      if (order.details?.length) {
+        await this.applyInventoryDeduction(order, order.details);
+      }
     }
 
-    await this.orderRepo.save(order);
     return this.serializeOutbound(await this.findOrderEntity(id));
   }
 
   async removeOutbound(id: string) {
     const order = await this.findOrderEntity(id);
 
-    // Revert inventory before deleting
-    await this.revertInventoryDeduction(order);
+    // Revert inventory before deleting ONLY if order was officially deducted (not draft)
+    const isDraft = ['DRAFT', 'Lưu tạm', 'draft'].includes(order.status || '');
+    if (!isDraft) {
+      await this.revertInventoryDeduction(order);
+    }
 
     // Delete details first
     const details = await this.detailRepo.find({
@@ -526,6 +593,9 @@ export class OutboundService implements OnModuleInit {
 
   private async persistDetails(orderId: string, items: OutboundItemDto[], branchCode?: string) {
     const saved: OutboundDetail[] = [];
+    const orderObj = await this.orderRepo.findOneBy({ id: orderId });
+    const isDisposalOrder = orderObj?.orderType === 'disposal' || Boolean(orderObj?.orderNo && (orderObj.orderNo.startsWith('PXH') || orderObj.orderNo.includes('HỦY')));
+
     for (const item of items) {
       let product: Product | null = null;
       if (item.productId && /^\d+$/.test(String(item.productId))) {
@@ -542,6 +612,8 @@ export class OutboundService implements OnModuleInit {
       if (qty <= 0 && !item.productName && !item.productSku && !item.productId) continue;
 
       const unitPrice = parseNumber(item.unitPrice ?? item.price);
+      const lossAmount = isDisposalOrder ? (item.lossAmount !== undefined ? parseNumber(item.lossAmount) : (unitPrice * qty)) : 0;
+      const totalDisposalAmount = isDisposalOrder ? (item.totalDisposalAmount !== undefined ? parseNumber(item.totalDisposalAmount) : (unitPrice + lossAmount)) : 0;
       const discountPercent = parseNumber(item.discountPercent);
       const discountAmount = parseNumber(item.discountAmount) || ((unitPrice * qty * discountPercent) / 100);
       const vatPercent = parseNumber(item.vatPercent);
@@ -562,6 +634,8 @@ export class OutboundService implements OnModuleInit {
         requiredQty: qty,
         pickedQty: 0,
         unitPrice: unitPrice.toFixed(2),
+        lossAmount: lossAmount.toFixed(2),
+        totalDisposalAmount: totalDisposalAmount.toFixed(2),
         discountPercent: discountPercent.toFixed(2),
         discountAmount: discountAmount.toFixed(2),
         vatPercent: vatPercent.toFixed(2),
@@ -595,14 +669,20 @@ export class OutboundService implements OnModuleInit {
       if (!productId) continue;
 
       const locCode = detail.warehouseCode || order.branchCode;
+      const qty = Number(detail.requiredQty) || 0;
+      if (qty <= 0) continue;
 
-      // 1. Tìm balance theo kho cụ thể
+      const isDirectShipped =
+        !order.status ||
+        ['Đã giao hàng', 'shipped', 'Đã xuất hủy', 'COMPLETED', 'Đã hoàn thành'].includes(order.status) ||
+        order.orderType === 'disposal';
+
+      // 1. Trừ tồn kho cấp kho tổng quát (KH010, KH006...)
       let [balance] = await this.dataSource.query(
         `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? AND locationCode = ? LIMIT 1`,
         [productId, locCode],
       );
 
-      // 2. Nếu không tìm thấy tại kho này, lấy balance có tồn kho lớn nhất
       if (!balance) {
         const rows = await this.dataSource.query(
           `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? ORDER BY totalPhysical DESC LIMIT 1`,
@@ -613,7 +693,6 @@ export class OutboundService implements OnModuleInit {
         }
       }
 
-      // 3. Nếu chưa có balance nào, tạo mới
       if (!balance) {
         const insertRes = await this.dataSource.query(
           `INSERT INTO stock_balances (productId, locationCode, totalPhysical, allocated, available) VALUES (?, ?, 0, 0, 0)`,
@@ -621,12 +700,6 @@ export class OutboundService implements OnModuleInit {
         );
         balance = { id: insertRes.insertId, totalPhysical: 0, allocated: 0, available: 0 };
       }
-
-      const qty = Number(detail.requiredQty) || 0;
-      const isDirectShipped =
-        !order.status ||
-        ['Đã giao hàng', 'shipped', 'Đã xuất hủy', 'COMPLETED', 'Đã hoàn thành'].includes(order.status) ||
-        order.orderType === 'disposal';
 
       if (isDirectShipped) {
         const newPhysical = Math.max(0, Number(balance.totalPhysical) - qty);
@@ -641,6 +714,33 @@ export class OutboundService implements OnModuleInit {
         await this.dataSource.query(
           `UPDATE stock_balances SET allocated = ?, available = ? WHERE id = ?`,
           [newAllocated, newAvailable, balance.id],
+        );
+      }
+
+      // 2. Trừ tồn kho tại Ô KỆ cụ thể trong stock_balances (nếu có lưu balance theo mã ô)
+      const binCodesToDeduct = this.extractBinCodesFromDetail(detail);
+      if (binCodesToDeduct.length > 0 && isDirectShipped) {
+        for (const bCode of binCodesToDeduct) {
+          const shortCode = (bCode.split('-').pop() || bCode).trim();
+          await this.dataSource.query(
+            `UPDATE stock_balances 
+             SET totalPhysical = GREATEST(0, totalPhysical - ?), 
+                 available = GREATEST(0, available - ?) 
+             WHERE productId = ? AND (locationCode = ? OR locationCode = ? OR locationCode LIKE ?)`,
+            [qty, qty, productId, bCode, shortCode, `%${shortCode}%`],
+          );
+        }
+      }
+
+      // 3. Khấu trừ trực tiếp vào customBins trong bảng warehouses
+      if (isDirectShipped) {
+        await this.updateWarehouseSubWarehousesBinStock(
+          locCode,
+          binCodesToDeduct,
+          detail.productSku || '',
+          detail.productName || '',
+          qty,
+          true,
         );
       }
     }
@@ -674,6 +774,13 @@ export class OutboundService implements OnModuleInit {
       if (!productId) continue;
 
       const locCode = detail.warehouseCode || order.branchCode;
+      const qty = Number(detail.requiredQty) || 0;
+      if (qty <= 0) continue;
+
+      const isDirectShipped =
+        !order.status ||
+        ['Đã giao hàng', 'shipped', 'Đã xuất hủy', 'COMPLETED', 'Đã hoàn thành'].includes(order.status) ||
+        order.orderType === 'disposal';
 
       let [balance] = await this.dataSource.query(
         `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? AND locationCode = ? LIMIT 1`,
@@ -690,29 +797,224 @@ export class OutboundService implements OnModuleInit {
         }
       }
 
-      if (!balance) continue;
+      if (balance) {
+        if (isDirectShipped) {
+          const newPhysical = Number(balance.totalPhysical) + qty;
+          const newAvailable = Math.max(0, newPhysical - Number(balance.allocated));
+          await this.dataSource.query(
+            `UPDATE stock_balances SET totalPhysical = ?, available = ? WHERE id = ?`,
+            [newPhysical, newAvailable, balance.id],
+          );
+        } else {
+          const newAllocated = Math.max(0, Number(balance.allocated) - qty);
+          const newAvailable = Math.max(0, Number(balance.totalPhysical) - newAllocated);
+          await this.dataSource.query(
+            `UPDATE stock_balances SET allocated = ?, available = ? WHERE id = ?`,
+            [newAllocated, newAvailable, balance.id],
+          );
+        }
+      }
 
-      const qty = Number(detail.requiredQty) || 0;
-      const isDirectShipped =
-        !order.status ||
-        ['Đã giao hàng', 'shipped', 'Đã xuất hủy', 'COMPLETED', 'Đã hoàn thành'].includes(order.status) ||
-        order.orderType === 'disposal';
+      // Hoàn trả vào stock_balances cấp ô kệ
+      const binCodesToDeduct = this.extractBinCodesFromDetail(detail);
+      if (binCodesToDeduct.length > 0 && isDirectShipped) {
+        for (const bCode of binCodesToDeduct) {
+          const shortCode = (bCode.split('-').pop() || bCode).trim();
+          await this.dataSource.query(
+            `UPDATE stock_balances 
+             SET totalPhysical = totalPhysical + ?, 
+                 available = available + ? 
+             WHERE productId = ? AND (locationCode = ? OR locationCode = ? OR locationCode LIKE ?)`,
+            [qty, qty, productId, bCode, shortCode, `%${shortCode}%`],
+          );
+        }
+      }
 
+      // Hoàn trả lại vào customBins trong bảng warehouses
       if (isDirectShipped) {
-        const newPhysical = Number(balance.totalPhysical) + qty;
-        const newAvailable = Math.max(0, newPhysical - Number(balance.allocated));
-        await this.dataSource.query(
-          `UPDATE stock_balances SET totalPhysical = ?, available = ? WHERE id = ?`,
-          [newPhysical, newAvailable, balance.id],
-        );
-      } else {
-        const newAllocated = Math.max(0, Number(balance.allocated) - qty);
-        const newAvailable = Math.max(0, Number(balance.totalPhysical) - newAllocated);
-        await this.dataSource.query(
-          `UPDATE stock_balances SET allocated = ?, available = ? WHERE id = ?`,
-          [newAllocated, newAvailable, balance.id],
+        await this.updateWarehouseSubWarehousesBinStock(
+          locCode,
+          binCodesToDeduct,
+          detail.productSku || '',
+          detail.productName || '',
+          qty,
+          false,
         );
       }
+    }
+  }
+
+  private extractBinCodesFromDetail(detail: OutboundDetail): string[] {
+    const raw = detail.locationBin || detail.note || '';
+    if (!raw) return [];
+    let binStr = raw;
+    const noteMatch = raw.match(/\[Vị trí Ô:\s*([^\]]+)\]/i);
+    if (noteMatch) {
+      binStr = noteMatch[1];
+    }
+    return binStr
+      .split(',')
+      .map((s) => s.split('(')[0].trim())
+      .filter((s) => Boolean(s) && s !== '-' && s !== 'Chưa chọn');
+  }
+
+  private async updateWarehouseSubWarehousesBinStock(
+    whCode: string,
+    binCodes: string[],
+    sku: string,
+    productName: string,
+    qty: number,
+    isDeduct: boolean,
+  ) {
+    if (!whCode) return;
+    try {
+      const [whRow] = await this.dataSource.query(
+        `SELECT id, code, subWarehouses FROM warehouses WHERE code = ? OR id = ? LIMIT 1`,
+        [whCode.trim(), whCode.trim()],
+      );
+      if (!whRow || !whRow.subWarehouses) return;
+
+      let subWarehouses: any[];
+      try {
+        subWarehouses = typeof whRow.subWarehouses === 'string'
+          ? JSON.parse(whRow.subWarehouses)
+          : whRow.subWarehouses;
+      } catch {
+        return;
+      }
+      if (!Array.isArray(subWarehouses)) return;
+
+      const norm = (s: string) =>
+        s ? s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().trim() : '';
+
+      const targetSku = (sku || '').trim().toUpperCase();
+      const targetNameNorm = norm(productName || '');
+
+      let changed = false;
+
+      // Danh sách các key cần khớp cho các ô kệ
+      const targetKeys = new Set<string>();
+      binCodes.forEach((b) => {
+        const clean = b.split('(')[0].trim();
+        const short = (clean.split('-').pop() || clean).trim();
+        const stripped = clean.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        targetKeys.add(clean.toUpperCase());
+        targetKeys.add(short.toUpperCase());
+        targetKeys.add(stripped);
+      });
+
+      subWarehouses.forEach((sub) => {
+        (sub.racks || []).forEach((rk: any) => {
+          const customBins = rk.customBins;
+          if (!customBins || typeof customBins !== 'object') return;
+
+          Object.keys(customBins).forEach((k) => {
+            const kClean = k.split('(')[0].trim();
+            const kShort = (kClean.split('-').pop() || kClean).trim();
+            const kStripped = kClean.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+            const isMatchedBin =
+              targetKeys.size === 0 || // Nếu không chỉ định ô thì tìm ô chứa đúng sản phẩm
+              targetKeys.has(k.toUpperCase()) ||
+              targetKeys.has(kClean.toUpperCase()) ||
+              targetKeys.has(kShort.toUpperCase()) ||
+              targetKeys.has(kStripped);
+
+            if (!isMatchedBin) return;
+
+            const binData = customBins[k];
+            if (!binData) return;
+
+            let existingProds: Array<{ sku?: string; productName: string; qty: number; occupancyPct: number; unit?: string }> = [];
+            if (Array.isArray(binData.products) && binData.products.length > 0) {
+              existingProds = binData.products.map((p: any) => ({ ...p }));
+            } else if (binData.productName && Number(binData.totalPhysical || 0) > 0) {
+              existingProds = [{
+                sku: binData.sku || '',
+                productName: binData.productName,
+                qty: Number(binData.totalPhysical || 0),
+                occupancyPct: Number(binData.occupancyPct || 100),
+                unit: binData.unit || 'cái',
+              }];
+            }
+
+            let matchIdx = existingProds.findIndex((p) => {
+              const pSku = (p.sku || '').trim().toUpperCase();
+              const pNameNorm = norm(p.productName || '');
+              return (targetSku && pSku && targetSku === pSku) ||
+                (targetNameNorm && pNameNorm && (targetNameNorm.includes(pNameNorm) || pNameNorm.includes(targetNameNorm)));
+            });
+
+            if (isDeduct) {
+              if (matchIdx >= 0) {
+                const matchedProd = existingProds[matchIdx];
+                const oldItemQty = Number(matchedProd.qty || 0);
+                const oldItemPct = Number(matchedProd.occupancyPct || 0);
+                const newItemQty = Math.max(0, oldItemQty - qty);
+                const newItemPct = oldItemQty > 0 ? Math.max(0, Math.round((newItemQty / oldItemQty) * oldItemPct)) : 0;
+
+                if (newItemQty > 0) {
+                  existingProds[matchIdx] = { ...matchedProd, qty: newItemQty, occupancyPct: newItemPct };
+                } else {
+                  existingProds.splice(matchIdx, 1);
+                }
+              } else {
+                const oldQty = Number(binData.totalPhysical || 0);
+                const newQty = Math.max(0, oldQty - qty);
+                const oldPct = Number(binData.occupancyPct || 0);
+                const newPct = oldQty > 0 ? Math.max(0, Math.round((newQty / oldQty) * oldPct)) : 0;
+                existingProds = newQty > 0 ? [{
+                  sku: targetSku || 'SKU-001',
+                  productName: productName || 'Hàng tồn kho',
+                  qty: newQty,
+                  occupancyPct: newPct,
+                  unit: binData.unit || 'cái',
+                }] : [];
+              }
+            } else {
+              // Revert / Cộng trả lại
+              if (matchIdx >= 0) {
+                existingProds[matchIdx].qty = Number(existingProds[matchIdx].qty || 0) + qty;
+                existingProds[matchIdx].occupancyPct = Math.min(100, Number(existingProds[matchIdx].occupancyPct || 0) + 10);
+              } else {
+                existingProds.push({
+                  sku: targetSku || 'SKU-001',
+                  productName: productName || 'Hàng tồn kho',
+                  qty,
+                  occupancyPct: 20,
+                  unit: binData.unit || 'cái',
+                });
+              }
+            }
+
+            const newTotalQty = existingProds.reduce((sum, p) => sum + (Number(p.qty) || 0), 0);
+            const newTotalPct = Math.min(100, existingProds.reduce((sum, p) => sum + (Number(p.occupancyPct) || 0), 0));
+            const noteDesc = newTotalQty === 0
+              ? 'Ô Trống'
+              : `Đã chứa: ${newTotalPct}% (${existingProds.map((p) => `${p.productName}: ${p.qty} ${p.unit || 'cái'} [${p.occupancyPct}%]`).join(', ')})`;
+
+            customBins[k] = {
+              ...binData,
+              totalPhysical: newTotalQty,
+              occupancyPct: newTotalQty === 0 ? 0 : (newTotalPct || 10),
+              products: existingProds,
+              notes: noteDesc,
+              productName: newTotalQty === 0 ? 'Ô Trống' : (existingProds.map((p) => p.productName).join(', ') || 'Hàng tồn kho'),
+              sku: existingProds.map((p) => p.sku).filter(Boolean).join(', '),
+            };
+            changed = true;
+          });
+        });
+      });
+
+      if (changed) {
+        await this.dataSource.query(
+          `UPDATE warehouses SET subWarehouses = ? WHERE id = ?`,
+          [JSON.stringify(subWarehouses), whRow.id],
+        );
+      }
+    } catch (e) {
+      console.error('Lỗi cập nhật subWarehouses kho hàng khi xuất kho:', e);
     }
   }
 
@@ -778,6 +1080,9 @@ export class OutboundService implements OnModuleInit {
           qty: effectiveQty,
           quantity: effectiveQty,
           unitPrice: parseNumber(d.unitPrice),
+          price: parseNumber(d.unitPrice),
+          lossAmount: d.lossAmount !== undefined ? parseNumber(d.lossAmount) : (effectiveQty * parseNumber(d.unitPrice)),
+          totalDisposalAmount: d.totalDisposalAmount !== undefined ? parseNumber(d.totalDisposalAmount) : (parseNumber(d.unitPrice) + (effectiveQty * parseNumber(d.unitPrice))),
           discountPercent: parseNumber(d.discountPercent),
           discountAmount: parseNumber(d.discountAmount),
           vatPercent: parseNumber(d.vatPercent),

@@ -56,6 +56,41 @@ function toDateString(value?: Date | string | null) {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
+const STOCKTAKE_SELECT = {
+  id: true,
+  stocktakeNo: true,
+  requestNo: true,
+  requestDate: true,
+  locationCode: true,
+  status: true,
+  plannedDate: true,
+  dueDate: true,
+  assignee: true,
+  note: true,
+  branch: true,
+  purpose: true,
+  reference: true,
+  checkBy: true,
+  detailBy: true,
+  createdBy: true,
+  approvedBy: true,
+  approvedAt: true,
+  createdAt: true,
+  details: {
+    id: true,
+    systemQty: true,
+    countedQty: true,
+    difference: true,
+    note: true,
+    product: {
+      id: true,
+      internalSku: true,
+      name: true,
+      unit: true,
+    },
+  },
+} as const;
+
 @Injectable()
 export class StocktakeService {
   constructor(
@@ -160,29 +195,43 @@ export class StocktakeService {
 
   async findAll() {
     const stocktakes = await this.stocktakeRepo.find({
+      select: STOCKTAKE_SELECT,
       relations: ['details', 'details.product'],
       order: { id: 'DESC' },
     });
     return stocktakes.map((s) => this.serialize(s));
   }
 
-  async findMyTasks(userIdentifier: string) {
+  async findMyTasks(userIdentifier: string, userEmail?: string, userFullName?: string) {
     const stocktakes = await this.stocktakeRepo.find({
+      select: STOCKTAKE_SELECT,
       relations: ['details', 'details.product'],
       order: { id: 'DESC' },
     });
-    // Filter by assignee or createdBy matching user identifier (case-insensitive)
-    const filtered = stocktakes.filter(
-      (s) =>
-        (s.assignee && s.assignee.toLowerCase() === userIdentifier.toLowerCase()) ||
-        (s.createdBy && s.createdBy.toLowerCase() === userIdentifier.toLowerCase())
-    );
+    const identifiers = [userIdentifier, userEmail, userFullName]
+      .filter(Boolean)
+      .map((s) => String(s).toLowerCase().trim());
+
+    // Filter by assignee or createdBy matching user identifier, email or full name (case-insensitive)
+    const filtered = stocktakes.filter((s) => {
+      const a = (s.assignee || '').toLowerCase().trim();
+      const c = (s.createdBy || '').toLowerCase().trim();
+      return identifiers.some(
+        (id) =>
+          id &&
+          (a === id ||
+            c === id ||
+            (a && (a.includes(id) || id.includes(a))) ||
+            (c && (c.includes(id) || id.includes(c)))),
+      );
+    });
     return filtered.map((s) => this.serialize(s));
   }
 
   async findRequests() {
     const stocktakes = await this.stocktakeRepo.find({
       where: { status: 'REQUESTED' },
+      select: STOCKTAKE_SELECT,
       relations: ['details', 'details.product'],
       order: { id: 'DESC' },
     });
@@ -424,11 +473,49 @@ export class StocktakeService {
   }
 
   // US05.04 & US05.05: Phê duyệt kiểm kê (ACID Transaction + Auto-Unfreeze + Bulk Stock Update)
-  async approve(id: string, approvedBy?: string) {
+  async approve(
+    id: string,
+    approvedBy?: string,
+    items?: Array<{
+      detailId?: string;
+      productId?: string;
+      countedQty: number;
+      note?: string;
+      shelfAllocations?: Array<{ binCode: string; qty: number }>;
+    }>,
+  ) {
     const stocktake = await this.findEntity(id);
 
-    if (stocktake.status === 'APPROVED' || stocktake.status === 'REJECTED') {
-      throw new BadRequestException('Phiên kiểm kê đã được xử lý trước đó');
+    if (stocktake.status === 'REJECTED') {
+      throw new BadRequestException('Phiên kiểm kê đã bị từ chối trước đó');
+    }
+
+    // 0. Cập nhật số lượng kiểm đếm & thông tin kệ nếu người duyệt truyền danh sách điều chỉnh
+    if (items && items.length > 0) {
+      for (const item of items) {
+        const detail = (stocktake.details || []).find(
+          (d) =>
+            (item.detailId && String(d.id) === String(item.detailId)) ||
+            (item.productId && d.product && String(d.product.id) === String(item.productId)),
+        );
+        if (detail) {
+          if (item.countedQty !== undefined && item.countedQty !== null) {
+            detail.countedQty = Number(item.countedQty);
+            detail.difference = detail.countedQty - detail.systemQty;
+          }
+          if (item.note) {
+            detail.note = item.note;
+          } else if (item.shelfAllocations && item.shelfAllocations.length > 0) {
+            const shelfStr = item.shelfAllocations
+              .map((s) => `${s.binCode} (${s.qty})`)
+              .join(', ');
+            detail.note = `[Kệ: ${shelfStr}]`;
+          }
+          await this.detailRepo.save(detail);
+        }
+      }
+      const fresh = await this.findEntity(id);
+      stocktake.details = fresh.details;
     }
 
     // Bọc toàn bộ cập nhật điều chỉnh tồn kho và mở khóa kho trong 1 Database Transaction duy nhất
@@ -462,32 +549,107 @@ export class StocktakeService {
 
           const matchingBalances = allBalances.filter((b) => isMatchWh(b.locationCode, targetWh));
 
-          let balance: StockBalance | null = null;
-          if (matchingBalances.length > 0) {
-            balance = matchingBalances[0];
-            balance.totalPhysical = detail.countedQty;
-            balance.available = Math.max(balance.totalPhysical - balance.allocated, 0);
+          // Kiểm tra xem mặt hàng này có thông tin phân bổ từng kệ (shelfAllocations) hay không
+          const itemPayload = (items || []).find(
+            (it) =>
+              (it.detailId && String(it.detailId) === String(detail.id)) ||
+              (it.productId && detail.product && String(it.productId) === String(detail.product.id)),
+          );
 
-            // Clean up duplicate alias rows for THIS WAREHOUSE ONLY (never touch other warehouses)
-            if (matchingBalances.length > 1) {
-              const duplicates = matchingBalances.slice(1);
-              await manager.remove(StockBalance, duplicates);
+          if (itemPayload?.shelfAllocations && itemPayload.shelfAllocations.length > 0) {
+            // 1. Cập nhật / tạo mới số lượng thực tồn của từng ô kệ cụ thể
+            const usedBalanceIds = new Set<string>();
+
+            for (const shelfAlloc of itemPayload.shelfAllocations) {
+              const binRaw = String(shelfAlloc.binCode || '').trim().toUpperCase();
+              const allocQty = Math.max(0, Number(shelfAlloc.qty || 0));
+              const cleanBin = binRaw.replace(/[^A-Z0-9]/g, '');
+
+              // Tìm xem đã có dòng tồn kho kệ nào khớp với mã ô kệ này chưa
+              let matchedShelf = matchingBalances.find((b) => {
+                const bLoc = (b.locationCode || '').trim().toUpperCase();
+                if (bLoc === targetWh.toUpperCase()) return false;
+                return (
+                  bLoc === binRaw ||
+                  bLoc.endsWith(`-${binRaw}`) ||
+                  bLoc.includes(`-${binRaw} `) ||
+                  bLoc.includes(`-${binRaw}(`) ||
+                  (cleanBin && bLoc.endsWith(`-${cleanBin}`))
+                );
+              });
+
+              if (matchedShelf) {
+                matchedShelf.totalPhysical = allocQty;
+                matchedShelf.available = Math.max(matchedShelf.totalPhysical - matchedShelf.allocated, 0);
+                await manager.save(StockBalance, matchedShelf);
+                usedBalanceIds.add(matchedShelf.id);
+              } else {
+                // Tạo mới dòng tồn kho cho kệ này nếu chưa có
+                const fullLoc = binRaw.includes('-ZONE-') || binRaw.startsWith(`${targetWh}-`)
+                  ? binRaw
+                  : `${targetWh}-ZONE-A-R01-${cleanBin || binRaw}`;
+
+                const newShelf = manager.create(StockBalance, {
+                  product: detail.product,
+                  locationCode: fullLoc,
+                  totalPhysical: allocQty,
+                  allocated: 0,
+                  available: allocQty,
+                });
+                await manager.save(StockBalance, newShelf);
+                usedBalanceIds.add(newShelf.id);
+              }
+            }
+
+            // Đặt số tồn về 0 cho những kệ khác của mặt hàng này trong kho không có trong danh sách kiểm đếm
+            for (const other of matchingBalances) {
+              const oLoc = (other.locationCode || '').trim().toUpperCase();
+              if (oLoc !== targetWh.toUpperCase() && !usedBalanceIds.has(other.id)) {
+                other.totalPhysical = 0;
+                other.available = 0;
+                await manager.save(StockBalance, other);
+              }
+            }
+
+            // 2. Cập nhật số tổng kho chung cho mặt hàng
+            let whBalance = matchingBalances.find((b) => (b.locationCode || '').trim().toUpperCase() === targetWh.toUpperCase());
+            if (whBalance) {
+              whBalance.totalPhysical = detail.countedQty;
+              whBalance.available = Math.max(whBalance.totalPhysical - whBalance.allocated, 0);
+              await manager.save(StockBalance, whBalance);
+            } else {
+              const product = await manager.findOne(Product, { where: { id: detail.product.id } });
+              if (product) {
+                whBalance = manager.create(StockBalance, {
+                  product,
+                  locationCode: targetWh,
+                  totalPhysical: detail.countedQty,
+                  allocated: 0,
+                  available: detail.countedQty,
+                });
+                await manager.save(StockBalance, whBalance);
+              }
             }
           } else {
-            const product = await manager.findOne(Product, { where: { id: detail.product.id } });
-            if (product) {
-              balance = manager.create(StockBalance, {
-                product,
-                locationCode: targetWh,
-                totalPhysical: detail.countedQty,
-                allocated: 0,
-                available: detail.countedQty,
-              });
+            // Cập nhật tổng kho khi không có phân bổ chi tiết từng kệ
+            let balance = matchingBalances.find((b) => (b.locationCode || '').trim().toUpperCase() === targetWh.toUpperCase()) || matchingBalances[0];
+            if (balance) {
+              balance.totalPhysical = detail.countedQty;
+              balance.available = Math.max(balance.totalPhysical - balance.allocated, 0);
+              await manager.save(StockBalance, balance);
+            } else {
+              const product = await manager.findOne(Product, { where: { id: detail.product.id } });
+              if (product) {
+                balance = manager.create(StockBalance, {
+                  product,
+                  locationCode: targetWh,
+                  totalPhysical: detail.countedQty,
+                  allocated: 0,
+                  available: detail.countedQty,
+                });
+                await manager.save(StockBalance, balance);
+              }
             }
-          }
-
-          if (balance) {
-            await manager.save(StockBalance, balance);
           }
         }
       }
@@ -564,6 +726,7 @@ export class StocktakeService {
   private async findEntity(id: string) {
     const stocktake = await this.stocktakeRepo.findOne({
       where: { id },
+      select: STOCKTAKE_SELECT,
       relations: ['details', 'details.product'],
     });
     if (!stocktake) throw new NotFoundException('Phiên kiểm kê không tồn tại');

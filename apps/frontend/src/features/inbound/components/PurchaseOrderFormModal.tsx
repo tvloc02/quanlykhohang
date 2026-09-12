@@ -52,6 +52,7 @@ type WarehouseRecord = {
   status: 'active' | 'inactive';
   managerIds: string[];
   staffIds: string[];
+  isFrozen?: boolean;
 };
 
 type PurchaseOrderUser = {
@@ -294,16 +295,41 @@ export function PurchaseOrderFormModal({
     );
   }, [allSelectableProducts, productSearch]);
 
-  const getFilteredProductsForRow = (rowText: string) => {
-    const kw = (rowText || '').trim().toLowerCase();
-    if (!kw) return allSelectableProducts;
-    const matched = allSelectableProducts.filter(
+  const getFilteredProductsForRow = (rowText: string, currentRowId?: string) => {
+    const currentRow = (form?.items || []).find((item) => item.rowId === currentRowId);
+    const selectedProd = allSelectableProducts.find((p) => p.id === currentRow?.productId);
+    const isSelectedText = selectedProd && (
+      rowText === `${selectedProd.internalSku ? selectedProd.internalSku + ' - ' : ''}${selectedProd.name}` ||
+      rowText === selectedProd.name ||
+      rowText === selectedProd.internalSku
+    );
+
+    const kw = isSelectedText ? '' : (rowText || '').trim().toLowerCase();
+
+    // Collect products selected in other rows
+    const otherSelectedIds = new Set<string>();
+    (form?.items || []).forEach((item) => {
+      if (currentRowId && item.rowId === currentRowId) return;
+      if (item.productId && String(item.productId).trim()) {
+        otherSelectedIds.add(String(item.productId).trim().toLowerCase());
+      }
+    });
+
+    const unselectedProducts = allSelectableProducts.filter((p) => {
+      const pId = String(p.id || '').trim().toLowerCase();
+      if (pId && otherSelectedIds.has(pId)) return false;
+      return true;
+    });
+
+    if (!kw) return unselectedProducts;
+
+    const matched = unselectedProducts.filter(
       (p) =>
         p &&
         ((p.name || '').toLowerCase().includes(kw) ||
           (p.internalSku || '').toLowerCase().includes(kw))
     );
-    const nonMatched = allSelectableProducts.filter((p) => !matched.includes(p));
+    const nonMatched = unselectedProducts.filter((p) => !matched.includes(p));
     return [...matched, ...nonMatched];
   };
 
@@ -493,7 +519,7 @@ export function PurchaseOrderFormModal({
                           onChange={(value) => {
                             onFormChange({ ...form, warehouseCode: value, approverId: '' });
                           }}
-                          options={warehouses.map((warehouse) => ({
+                          options={warehouses.filter((warehouse) => !warehouse.isFrozen).map((warehouse) => ({
                             value: warehouse.code,
                             label: `${warehouse.name} (${warehouse.code})`,
                           }))}
@@ -774,7 +800,7 @@ export function PurchaseOrderFormModal({
                                           value={displayVal}
                                           onChange={(e) => {
                                             const val = e.target.value;
-                                            const matched = getFilteredProductsForRow(val)[0];
+                                            const matched = getFilteredProductsForRow(val, item.rowId)[0];
                                             if (matched) {
                                               onProductChange(item.rowId, matched.id);
                                               if (matched.price) {
@@ -798,10 +824,10 @@ export function PurchaseOrderFormModal({
                                               <span className="w-1/4 text-right uppercase">Giá mua</span>
                                             </div>
                                             <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
-                                              {getFilteredProductsForRow(displayVal).length === 0 ? (
+                                              {getFilteredProductsForRow(displayVal, item.rowId).length === 0 ? (
                                                 <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy hàng hóa</div>
                                               ) : (
-                                                getFilteredProductsForRow(displayVal).map((p) => (
+                                                getFilteredProductsForRow(displayVal, item.rowId).map((p) => (
                                                   <div
                                                     key={p.id}
                                                     onClick={() => {

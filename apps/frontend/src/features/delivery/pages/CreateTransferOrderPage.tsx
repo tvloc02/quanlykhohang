@@ -30,6 +30,7 @@ import {
   Sparkles,
   Bot,
   AlertCircle,
+  Lock,
 } from 'lucide-react';
 import { deliveryApi, type TransferOrder } from '../api/deliveryApi';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
@@ -38,7 +39,7 @@ import MainLayout from '../../../shared/components/MainLayout';
 import { getStoredShippers, type Shipper } from '../services/shipperService';
 import QuickAddShipperModal from '../components/QuickAddShipperModal';
 import { SmartSlottingGridModal } from '../../warehouses/components/SmartSlottingGridModal';
-import { getStoredWarehouses, mergeStoredWarehouses } from '../../../shared/utils/warehouseAssignments';
+import { getStoredWarehouses, mergeStoredWarehouses, stripAssignedBinsFromNote } from '../../../shared/utils/warehouseAssignments';
 
 // ─── TYPES & INTERFACES ────────────────────────────────────────
 
@@ -69,6 +70,7 @@ export interface WarehouseOption {
   id: string;
   code: string;
   name: string;
+  isFrozen?: boolean;
 }
 
 export interface UserOption {
@@ -324,6 +326,18 @@ export default function CreateTransferOrderPage({
           it.product?.purchasePrice ||
           0
         );
+
+        const isFromCompletedReceive = isReadOnly && (targetStatus === 'DELIVERED' || targetStatus === 'COMPLETED' || targetStatus === 'RECEIVED');
+        const initialLocationBin = isReceiveMode && !isFromCompletedReceive
+          ? ''
+          : (it.locationBin || (Array.isArray(it.assignedBins) ? it.assignedBins.join(', ') : ''));
+        const initialAssignedBins = isReceiveMode && !isFromCompletedReceive
+          ? []
+          : (Array.isArray(it.assignedBins) ? it.assignedBins : (it.locationBin ? String(it.locationBin).split(',').map((b: string) => b.trim()).filter(Boolean) : []));
+        const initialNote = isReceiveMode && !isFromCompletedReceive
+          ? (it.note ? stripAssignedBinsFromNote(it.note) : '')
+          : (it.note || '');
+
         return {
           rowId: `edit-row-${it.id || idx}`,
           productId: it.id || it.productId || '',
@@ -334,9 +348,9 @@ export default function CreateTransferOrderPage({
           qty: q,
           price: p,
           totalAmount: q * p,
-          locationBin: it.locationBin || (Array.isArray(it.assignedBins) ? it.assignedBins.join(', ') : ''),
-          assignedBins: Array.isArray(it.assignedBins) ? it.assignedBins : (it.locationBin ? String(it.locationBin).split(',').map((b: string) => b.trim()).filter(Boolean) : []),
-          note: it.note || '',
+          locationBin: initialLocationBin,
+          assignedBins: initialAssignedBins,
+          note: initialNote,
         };
       });
 
@@ -359,9 +373,11 @@ export default function CreateTransferOrderPage({
           dispatchDate: targetEditData.dispatchDate
             ? (new Date(targetEditData.dispatchDate).toISOString().slice(0, 19))
             : (targetEditData.scheduledDate ? new Date(targetEditData.scheduledDate).toISOString().slice(0, 19) : formatISOWithSeconds()),
-          receiveDate: targetEditData.receiveDate
-            ? (new Date(targetEditData.receiveDate).toISOString().slice(0, 19))
-            : formatISOWithSeconds(new Date(Date.now() + 86400000)),
+          receiveDate: isReceiveMode
+            ? formatISOWithSeconds(new Date())
+            : (targetEditData.receiveDate
+              ? (new Date(targetEditData.receiveDate).toISOString().slice(0, 19))
+              : formatISOWithSeconds(new Date(Date.now() + 86400000))),
           driverName: targetEditData.driverName || '',
           driverPhone: targetEditData.driverPhone || '',
           vehiclePlate: targetEditData.vehiclePlate || '',
@@ -435,6 +451,18 @@ export default function CreateTransferOrderPage({
         it.product?.purchasePrice ||
         0
       );
+
+      const isFromCompletedReceive = isReadOnly && (targetStatus === 'DELIVERED' || targetStatus === 'COMPLETED' || targetStatus === 'RECEIVED');
+      const initialLocationBin = isReceiveMode && !isFromCompletedReceive
+        ? ''
+        : (it.locationBin || (Array.isArray(it.assignedBins) ? it.assignedBins.join(', ') : ''));
+      const initialAssignedBins = isReceiveMode && !isFromCompletedReceive
+        ? []
+        : (Array.isArray(it.assignedBins) ? it.assignedBins : (it.locationBin ? String(it.locationBin).split(',').map((b: string) => b.trim()).filter(Boolean) : []));
+      const initialNote = isReceiveMode && !isFromCompletedReceive
+        ? (it.note ? stripAssignedBinsFromNote(it.note) : '')
+        : (it.note || '');
+
       return {
         rowId: `edit-row-${it.id || idx}`,
         productId: it.id || it.productId || '',
@@ -445,9 +473,9 @@ export default function CreateTransferOrderPage({
         qty: q,
         price: p,
         totalAmount: q * p,
-        locationBin: it.locationBin || (Array.isArray(it.assignedBins) ? it.assignedBins.join(', ') : ''),
-        assignedBins: Array.isArray(it.assignedBins) ? it.assignedBins : (it.locationBin ? String(it.locationBin).split(',').map((b: string) => b.trim()).filter(Boolean) : []),
-        note: it.note || '',
+        locationBin: initialLocationBin,
+        assignedBins: initialAssignedBins,
+        note: initialNote,
       };
     });
 
@@ -470,9 +498,11 @@ export default function CreateTransferOrderPage({
         : targetEditData.scheduledDate
         ? new Date(targetEditData.scheduledDate).toISOString().slice(0, 19)
         : formatISOWithSeconds(),
-      receiveDate: targetEditData.receiveDate
-        ? new Date(targetEditData.receiveDate).toISOString().slice(0, 19)
-        : formatISOWithSeconds(new Date(Date.now() + 86400000)),
+      receiveDate: isReceiveMode
+        ? formatISOWithSeconds(new Date())
+        : (targetEditData.receiveDate
+          ? new Date(targetEditData.receiveDate).toISOString().slice(0, 19)
+          : formatISOWithSeconds(new Date(Date.now() + 86400000))),
       driverName: targetEditData.driverName || '',
       driverPhone: targetEditData.driverPhone || '',
       vehiclePlate: targetEditData.vehiclePlate || '',
@@ -563,13 +593,18 @@ export default function CreateTransferOrderPage({
           const rawList = Array.isArray(whData) ? whData : whData.data || [];
           const list = mergeStoredWarehouses(rawList, getStoredWarehouses());
           setWarehouses(list);
-          if (list.length > 0 && !targetEditData) {
-            const firstWh = list[0]?.code || list[0]?.id || 'KH002';
-            const secondWh = list[1]?.code || list[1]?.id || list[0]?.code || list[0]?.id || 'KH006';
+          const unfrozen = list.filter((w: any) => !w.isFrozen);
+          if (unfrozen.length > 0 && !targetEditData) {
+            const firstWh = unfrozen[0]?.code || unfrozen[0]?.id || 'KH002';
+            const secondWh = unfrozen[1]?.code || unfrozen[1]?.id || unfrozen[0]?.code || unfrozen[0]?.id || 'KH006';
             setTabs((prev) =>
               prev.map((tab) => {
-                const isSourceValid = list.some((w: any) => w.code === tab.sourceWarehouseCode || w.id === tab.sourceWarehouseCode);
-                const isDestValid = list.some((w: any) => w.code === tab.destinationWarehouseCode || w.id === tab.destinationWarehouseCode);
+                const isSourceValid = unfrozen.some(
+                  (w: any) => w.code === tab.sourceWarehouseCode || w.id === tab.sourceWarehouseCode
+                );
+                const isDestValid = unfrozen.some(
+                  (w: any) => w.code === tab.destinationWarehouseCode || w.id === tab.destinationWarehouseCode
+                );
                 return {
                   ...tab,
                   sourceWarehouseCode: isSourceValid ? tab.sourceWarehouseCode : secondWh,
@@ -723,11 +758,52 @@ export default function CreateTransferOrderPage({
   };
 
   // Filtered Products for row autocomplete
-  const getFilteredProductsForRow = (rowText: string) => {
-    const kw = (rowText || '').trim().toLowerCase();
-    if (!kw) return products;
-    return products.filter(
-      (p) => p.name.toLowerCase().includes(kw) || (p.internalSku || '').toLowerCase().includes(kw)
+  const getFilteredProductsForRow = (rowText: string, currentRowId?: string) => {
+    const currentRow = (activeTab?.details || []).find((r) => r.rowId === currentRowId);
+    const isSelectedProductText = currentRow?.productId && (
+      rowText === `${currentRow.productSku ? currentRow.productSku + ' - ' : ''}${currentRow.productName}` ||
+      rowText === currentRow.productName ||
+      rowText === currentRow.productSku
+    );
+
+    const kw = isSelectedProductText ? '' : (rowText || '').trim().toLowerCase();
+
+    // Collect products selected in OTHER rows
+    const otherSelectedIds = new Set<string>();
+    const otherSelectedSkus = new Set<string>();
+    const otherSelectedNames = new Set<string>();
+
+    (activeTab?.details || []).forEach((r) => {
+      if (currentRowId && r.rowId === currentRowId) return;
+      if (r.productId && String(r.productId).trim()) {
+        otherSelectedIds.add(String(r.productId).trim().toLowerCase());
+      }
+      if (r.productSku && String(r.productSku).trim()) {
+        otherSelectedSkus.add(String(r.productSku).trim().toLowerCase());
+      }
+      if (r.productName && String(r.productName).trim()) {
+        otherSelectedNames.add(String(r.productName).trim().toLowerCase());
+      }
+    });
+
+    const unselectedProducts = products.filter((p) => {
+      const pId = String(p.id || '').trim().toLowerCase();
+      const pSku = String(p.internalSku || '').trim().toLowerCase();
+      const pName = String(p.name || '').trim().toLowerCase();
+
+      if (pId && otherSelectedIds.has(pId)) return false;
+      if (pSku && otherSelectedSkus.has(pSku)) return false;
+      if (pName && otherSelectedNames.has(pName)) return false;
+      return true;
+    });
+
+    if (!kw) return unselectedProducts;
+
+    return unselectedProducts.filter(
+      (p) =>
+        p.name.toLowerCase().includes(kw) ||
+        (p.internalSku || '').toLowerCase().includes(kw) ||
+        `${p.internalSku} ${p.name}`.toLowerCase().includes(kw)
     );
   };
 
@@ -735,6 +811,18 @@ export default function CreateTransferOrderPage({
   const activeValidItems = useMemo(() => {
     if (!activeTab) return [];
     return activeTab.details.filter((d) => (d.productName || d.productSku || d.productId) && d.qty > 0);
+  }, [activeTab]);
+
+  // Kiểm tra xem đã có bất kỳ hàng hóa nào trong phiếu được chọn ô kệ hay chưa
+  const hasAssignedBins = useMemo(() => {
+    if (!activeTab) return false;
+    return (activeTab.details || []).some((r) => {
+      const hasProduct = Boolean(r.productId || r.productName?.trim() || r.productSku?.trim());
+      if (!hasProduct) return false;
+      const hasArray = Array.isArray(r.assignedBins) && r.assignedBins.length > 0;
+      const hasStr = Boolean(r.locationBin && r.locationBin.trim() && r.locationBin.trim() !== '-');
+      return hasArray || hasStr;
+    });
   }, [activeTab]);
 
   const activePickBinRow = useMemo(() => {
@@ -783,8 +871,26 @@ export default function CreateTransferOrderPage({
   const handleSaveTransfer = async (statusSave: 'DRAFT' | 'APPROVED' | 'IN_TRANSIT' | 'DELIVERED' | 'COMPLETED') => {
     if (!activeTab) return;
 
-    if (activeValidItems.length === 0) {
-      setToast({ type: 'error', message: 'Vui lòng chọn ít nhất 1 sản phẩm với số lượng > 0' });
+    const itemsWithProduct = (activeTab.details || []).filter(
+      (r) => r.productId || r.productName?.trim() || r.productSku?.trim()
+    );
+
+    if (itemsWithProduct.length === 0) {
+      setToast({
+        type: 'error',
+        message: 'Phiếu điều chuyển phải có ít nhất 1 hàng hóa! Vui lòng chọn hàng hóa trước khi tạo phiếu.',
+      });
+      return;
+    }
+
+    const invalidQtyItem = itemsWithProduct.find(
+      (r) => !r.qty || Number(r.qty) < 1 || isNaN(Number(r.qty))
+    );
+    if (invalidQtyItem) {
+      setToast({
+        type: 'error',
+        message: `Mặt hàng "${invalidQtyItem.productName || invalidQtyItem.productSku || 'trong phiếu'}" có số lượng không hợp lệ. Số lượng phải lớn hơn hoặc bằng 1!`,
+      });
       return;
     }
 
@@ -981,22 +1087,37 @@ export default function CreateTransferOrderPage({
 
           {/* Kho xuất (Kho nguồn) */}
           <div>
-            <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
-              <WarehouseIcon className="h-3.5 w-3.5 text-cyan-600" />
-              <span>KHO XUẤT HÀNG (KHO NGUỒN)</span>
-            </label>
+            <div className="mb-1 flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
+                <WarehouseIcon className="h-3.5 w-3.5 text-cyan-600" />
+                <span>KHO XUẤT HÀNG (KHO NGUỒN)</span>
+              </label>
+            </div>
             <select
-              disabled={isReadOnly}
+              disabled={isReadOnly || (!isReceiveMode && hasAssignedBins)}
               value={activeTab?.sourceWarehouseCode || ''}
-              onChange={(e) => handleSourceWarehouseChange(e.target.value)}
-              className="h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none transition focus:border-cyan-600 cursor-pointer disabled:bg-slate-100 disabled:text-slate-600 disabled:border-slate-200 disabled:cursor-not-allowed"
+              onChange={(e) => {
+                if (!isReceiveMode && hasAssignedBins) {
+                  setToast({ message: 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho!', type: 'error' });
+                  return;
+                }
+                handleSourceWarehouseChange(e.target.value);
+              }}
+              className={`h-10 w-full rounded-xl border-2 px-3 text-xs font-bold transition shadow-2xs ${
+                isReadOnly || (!isReceiveMode && hasAssignedBins)
+                  ? 'bg-slate-100 border-slate-300 text-slate-600 cursor-not-allowed'
+                  : 'bg-cyan-50/50 border-cyan-500 text-cyan-900 outline-none focus:border-cyan-600 cursor-pointer'
+              }`}
+              title={!isReceiveMode && hasAssignedBins ? 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho.' : undefined}
             >
-              {warehouses.length > 0 ? (
-                warehouses.map((wh) => (
-                  <option key={wh.id || wh.code} value={wh.code || wh.id}>
-                    [{wh.code || wh.id}] {wh.name}
-                  </option>
-                ))
+              {warehouses.filter((wh) => !wh.isFrozen).length > 0 ? (
+                warehouses
+                  .filter((wh) => !wh.isFrozen)
+                  .map((wh) => (
+                    <option key={wh.id || wh.code} value={wh.code || wh.id}>
+                      [{wh.code || wh.id}] {wh.name}
+                    </option>
+                  ))
               ) : (
                 <>
                   <option value="KH006">KH006 - Kho Thanh Trì</option>
@@ -1009,22 +1130,37 @@ export default function CreateTransferOrderPage({
 
           {/* Kho nhập (Chi nhánh nhận) - Đồng nhất màu Cyan */}
           <div>
-            <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
-              <ArrowRight className="h-3.5 w-3.5 text-cyan-600" />
-              <span>KHO NHẬP (CHI NHÁNH NHẬN)</span>
-            </label>
+            <div className="mb-1 flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
+                <ArrowRight className="h-3.5 w-3.5 text-cyan-600" />
+                <span>KHO NHẬP (CHI NHÁNH NHẬN)</span>
+              </label>
+            </div>
             <select
-              disabled={isReadOnly}
+              disabled={isReadOnly || (isReceiveMode && hasAssignedBins)}
               value={activeTab?.destinationWarehouseCode || ''}
-              onChange={(e) => handleDestinationWarehouseChange(e.target.value)}
-              className="h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none transition focus:border-cyan-600 cursor-pointer disabled:bg-slate-100 disabled:text-slate-600 disabled:border-slate-200 disabled:cursor-not-allowed"
+              onChange={(e) => {
+                if (isReceiveMode && hasAssignedBins) {
+                  setToast({ message: 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho!', type: 'error' });
+                  return;
+                }
+                handleDestinationWarehouseChange(e.target.value);
+              }}
+              className={`h-10 w-full rounded-xl border-2 px-3 text-xs font-bold transition shadow-2xs ${
+                isReadOnly || (isReceiveMode && hasAssignedBins)
+                  ? 'bg-slate-100 border-slate-300 text-slate-600 cursor-not-allowed'
+                  : 'bg-cyan-50/50 border-cyan-500 text-cyan-900 outline-none focus:border-cyan-600 cursor-pointer'
+              }`}
+              title={isReceiveMode && hasAssignedBins ? 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho.' : undefined}
             >
-              {warehouses.length > 0 ? (
-                warehouses.map((wh) => (
-                  <option key={wh.id || wh.code} value={wh.code || wh.id}>
-                    [{wh.code || wh.id}] {wh.name}
-                  </option>
-                ))
+              {warehouses.filter((wh) => !wh.isFrozen).length > 0 ? (
+                warehouses
+                  .filter((wh) => !wh.isFrozen)
+                  .map((wh) => (
+                    <option key={wh.id || wh.code} value={wh.code || wh.id}>
+                      [{wh.code || wh.id}] {wh.name}
+                    </option>
+                  ))
               ) : (
                 <>
                   <option value="KH002">KH002 - Kho Chi Nhánh HCM</option>
@@ -1075,12 +1211,25 @@ export default function CreateTransferOrderPage({
             />
           </div>
 
-          {/* Ngày & Giờ Dự Kiến Nhận */}
+          {/* Ngày & Giờ Nhận Hàng */}
           <div>
-            <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
-              <Calendar className="h-3.5 w-3.5 text-cyan-600" />
-              <span>NGÀY & GIỜ NHẬN (DỰ KIẾN)</span>
-            </label>
+            <div className="mb-1 flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
+                <Calendar className="h-3.5 w-3.5 text-cyan-600" />
+                <span>{isReceiveMode ? 'NGÀY & GIỜ NHẬN HÀNG' : 'NGÀY & GIỜ NHẬN (DỰ KIẾN)'}</span>
+              </label>
+              {isReceiveMode && !isReadOnly && (
+                <button
+                  type="button"
+                  onClick={() => updateActiveTab((t) => ({ ...t, receiveDate: formatISOWithSeconds(new Date()) }))}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-300 transition cursor-pointer"
+                  title="Đặt ngày & giờ nhận là thời điểm hiện tại"
+                >
+                  <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                  <span>Hôm nay</span>
+                </button>
+              )}
+            </div>
             <input
               type="datetime-local"
               step="1"
@@ -1182,7 +1331,7 @@ export default function CreateTransferOrderPage({
         {/* LEFT COLUMN: Product Table */}
         <div className="lg:col-span-9 flex flex-col rounded-2xl border-2 border-cyan-200 bg-white shadow-sm overflow-hidden">
           {/* Table Header Strip */}
-          <div className="px-4 py-3 border-b border-cyan-200 bg-cyan-50/80 flex items-center justify-between">
+          <div className="px-4 py-3 border-b border-cyan-200 bg-cyan-50/80 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-cyan-950 font-black text-xs uppercase tracking-wide">
               <Truck className="h-4.5 w-4.5 text-cyan-600" />
               <span>
@@ -1249,7 +1398,12 @@ export default function CreateTransferOrderPage({
                           value={row.productName || ''}
                           onChange={(e) => {
                             const val = e.target.value;
-                            updateRow(row.rowId, { productName: val, qty: row.qty > 0 ? row.qty : 1 });
+                            const isExact = row.productId && (val === `${row.productSku ? row.productSku + ' - ' : ''}${row.productName}` || val === row.productName);
+                            updateRow(row.rowId, {
+                              productName: val,
+                              qty: row.qty > 0 ? row.qty : 1,
+                              ...(isExact ? {} : { productId: '', productSku: '' }),
+                            });
                             setActiveProductDropdownRowId(row.rowId);
                           }}
                           onFocus={() => !isReadOnly && setActiveProductDropdownRowId(row.rowId)}
@@ -1267,10 +1421,10 @@ export default function CreateTransferOrderPage({
                               <span className="w-1/3 text-right uppercase">SL Tồn Kho Xuất</span>
                             </div>
                             <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
-                              {getFilteredProductsForRow(row.productName).length === 0 ? (
+                              {getFilteredProductsForRow(row.productName || row.productSku, row.rowId).length === 0 ? (
                                 <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy sản phẩm phù hợp</div>
                               ) : (
-                                getFilteredProductsForRow(row.productName).map((p) => {
+                                getFilteredProductsForRow(row.productName || row.productSku, row.rowId).map((p) => {
                                   const stockInSource = getProductWarehouseStock(p, activeTab?.sourceWarehouseCode);
                                   return (
                                     <div
@@ -1359,10 +1513,11 @@ export default function CreateTransferOrderPage({
                       <td className="p-1.5 border-r border-slate-200">
                         <input
                           type="number"
-                          min="0"
+                          min="1"
                           disabled={isReadOnly}
                           value={row.qty || ''}
                           onChange={(e) => updateRow(row.rowId, { qty: Number(e.target.value) })}
+                          placeholder="1"
                           className="w-full h-9 px-2 text-right rounded-lg border border-slate-300 bg-white font-bold text-slate-900 outline-none focus:border-cyan-600 disabled:bg-slate-50 disabled:text-slate-700 disabled:border-slate-200"
                         />
                       </td>

@@ -157,12 +157,12 @@ function getStatusClass(status: CatalogCategoryStatus) {
 }
 
 export default function CategoryManagement() {
-    const { canPerformAction, isAdmin } = usePermissions();
-    const canCreate = isAdmin || canPerformAction('categories', 'create');
-    const canEdit = isAdmin || canPerformAction('categories', 'edit');
-    const canDelete = isAdmin || canPerformAction('categories', 'delete');
-    const canImport = isAdmin || canPerformAction('categories', 'import');
-    const canExport = isAdmin || canPerformAction('categories', 'export');
+    const { canPerformAction } = usePermissions();
+    const canCreate = canPerformAction('categories', 'create');
+    const canEdit = canPerformAction('categories', 'edit');
+    const canDelete = canPerformAction('categories', 'delete');
+    const canImport = canPerformAction('categories', 'import');
+    const canExport = canPerformAction('categories', 'export');
 
     const [categories, setCategories] = React.useState<CatalogCategory[]>(() => getStoredCatalogCategories());
     const [search, setSearch] = React.useState('');
@@ -924,26 +924,38 @@ export default function CategoryManagement() {
                                                 >
                                                     <Eye size={18} strokeWidth={2.5} />
                                                 </button>
-                                                {canEdit && (
-                                                    <button
-                                                        type="button"
-                                                        className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
-                                                        title="Sửa nhóm hàng hóa"
-                                                        onClick={() => openCategoryModal('edit', category)}
-                                                    >
-                                                        <Pencil size={18} strokeWidth={2.5} />
-                                                    </button>
-                                                )}
-                                                {canDelete && (
-                                                    <button
-                                                        type="button"
-                                                        className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
-                                                        title="Xóa nhóm hàng hóa"
-                                                        onClick={() => openCategoryModal('delete', category)}
-                                                    >
-                                                        <Trash2 size={18} strokeWidth={2.5} />
-                                                    </button>
-                                                )}
+                                                <button
+                                                    type="button"
+                                                    disabled={!canEdit}
+                                                    className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                                                        !canEdit
+                                                            ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
+                                                            : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 cursor-pointer'
+                                                    }`}
+                                                    title={!canEdit ? 'Không có quyền sửa' : 'Sửa nhóm hàng hóa'}
+                                                    onClick={() => {
+                                                        if (!canEdit) return;
+                                                        openCategoryModal('edit', category);
+                                                    }}
+                                                >
+                                                    <Pencil size={18} strokeWidth={2.5} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    disabled={!canDelete}
+                                                    className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                                                        !canDelete
+                                                            ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
+                                                            : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 cursor-pointer'
+                                                    }`}
+                                                    title={!canDelete ? 'Không có quyền xóa' : 'Xóa nhóm hàng hóa'}
+                                                    onClick={() => {
+                                                        if (!canDelete) return;
+                                                        openCategoryModal('delete', category);
+                                                    }}
+                                                >
+                                                    <Trash2 size={18} strokeWidth={2.5} />
+                                                </button>
                                             </div>
                                         </td>
                                     )}

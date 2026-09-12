@@ -27,6 +27,7 @@ import { DocumentsModule } from './documents/documents.module';
 import { SmartInventoryModule } from './inventory/smart-inventory/smart-inventory.module';
 import { ProjectTeamsModule } from './project-teams/project-teams.module';
 import { UploadModule } from './upload/upload.module';
+import { SettingsModule } from './settings/settings.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { UploadModule } from './upload/upload.module';
       autoLoadEntities: true,
       synchronize: true,
       logging: false,
+      timezone: 'Z',
     }),
     AuthModule,
     UsersModule,
@@ -62,6 +64,7 @@ import { UploadModule } from './upload/upload.module';
     DocumentsModule,
     ProjectTeamsModule,
     UploadModule,
+    SettingsModule,
   ],
   controllers: [],
   providers: [

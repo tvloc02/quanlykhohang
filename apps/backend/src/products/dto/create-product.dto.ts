@@ -44,4 +44,30 @@ export class CreateProductDto {
   @IsOptional()
   @IsBoolean()
   isVisible?: boolean;
+
+  @IsOptional()
+  weight?: number;
+
+  @IsOptional()
+  length?: number;
+
+  @IsOptional()
+  width?: number;
+
+  @IsOptional()
+  height?: number;
+
+  @IsOptional()
+  volume?: number;
+
+  @IsOptional()
+  volumetricWeight?: number;
+
+  @IsOptional()
+  @IsString()
+  tempRequirement?: string;
+
+  @IsOptional()
+  @IsString()
+  turnoverClass?: string;
 }

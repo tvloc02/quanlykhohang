@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { Product } from '../entities/product.entity';
@@ -77,7 +77,7 @@ export function calculateAggregatedStock(productBalances: any[]) {
 }
 
 @Injectable()
-export class ProductsService {
+export class ProductsService implements OnModuleInit {
   constructor(
     @InjectRepository(Product) private productRepo: Repository<Product>,
     @InjectRepository(Category) private categoryRepo: Repository<Category>,
@@ -86,6 +86,44 @@ export class ProductsService {
     @InjectRepository(StockInHistory) private stockInHistoryRepo: Repository<StockInHistory>,
     @InjectRepository(InboundDetail) private inboundDetailRepo: Repository<InboundDetail>,
   ) { }
+
+  async onModuleInit() {
+    try {
+      const defaultLogistics: Record<string, Partial<Product>> = {
+        'SP-DT-006': { weight: 2.2, length: 35, width: 26, height: 6, volume: 0.0055, volumetricWeight: 0.91, tempRequirement: 'AMBIENT', turnoverClass: 'A' },
+        'SP-DT-007': { weight: 0.45, length: 18, width: 10, height: 4, volume: 0.0007, volumetricWeight: 0.12, tempRequirement: 'AMBIENT', turnoverClass: 'A' },
+        'SP-DT-001': { weight: 0.75, length: 25, width: 22, height: 8, volume: 0.0044, volumetricWeight: 0.73, tempRequirement: 'AMBIENT', turnoverClass: 'B' },
+        'SP-DT-002': { weight: 0.15, length: 15, width: 10, height: 3, volume: 0.0005, volumetricWeight: 0.08, tempRequirement: 'THERMAL', turnoverClass: 'B' },
+        'SP-DT-003': { weight: 0.35, length: 16, width: 14, height: 7, volume: 0.0016, volumetricWeight: 0.26, tempRequirement: 'AMBIENT', turnoverClass: 'A' },
+        'SP-TP-001': { weight: 5.0, length: 45, width: 30, height: 10, volume: 0.0135, volumetricWeight: 2.25, tempRequirement: 'AMBIENT', turnoverClass: 'A' },
+        'SP-TP-006': { weight: 13.0, length: 40, width: 25, height: 22, volume: 0.022, volumetricWeight: 3.67, tempRequirement: 'THERMAL', turnoverClass: 'A' },
+        'SP-VL-001': { weight: 8.5, length: 110, width: 20, height: 20, volume: 0.044, volumetricWeight: 7.33, tempRequirement: 'AMBIENT', turnoverClass: 'C' },
+        '24110806': { weight: 0.08, length: 10, width: 10, height: 2, volume: 0.0002, volumetricWeight: 0.03, tempRequirement: 'AMBIENT', turnoverClass: 'C' },
+        'HH484105': { weight: 0.45, length: 18, width: 10, height: 4, volume: 0.0007, volumetricWeight: 0.12, tempRequirement: 'AMBIENT', turnoverClass: 'A' },
+        'HH976498': { weight: 0.25, length: 10, width: 10, height: 5, volume: 0.0005, volumetricWeight: 0.08, tempRequirement: 'AMBIENT', turnoverClass: 'A' },
+        'HH180338': { weight: 0.25, length: 10, width: 10, height: 5, volume: 0.0005, volumetricWeight: 0.08, tempRequirement: 'AMBIENT', turnoverClass: 'B' },
+      };
+
+      const products = await this.productRepo.find();
+      for (const p of products) {
+        const sku = p.internalSku;
+        const seed = defaultLogistics[sku];
+        if (seed) {
+          p.weight = seed.weight!;
+          p.length = seed.length!;
+          p.width = seed.width!;
+          p.height = seed.height!;
+          p.volume = seed.volume!;
+          p.volumetricWeight = seed.volumetricWeight!;
+          p.tempRequirement = seed.tempRequirement!;
+          p.turnoverClass = seed.turnoverClass!;
+          await this.productRepo.save(p);
+        }
+      }
+    } catch (e) {
+      console.error('Seed logistics error:', e);
+    }
+  }
 
   /**
    * Tra cứu hàng hóa theo mã vạch (supplierBarcode) hoặc mã SKU nội bộ (internalSku).
@@ -153,6 +191,15 @@ export class ProductsService {
         sku = 'HH' + Date.now().toString().slice(-6) + Math.floor(Math.random() * 100).toString().padStart(2, '0');
       }
 
+      const length = dto.length !== undefined ? Number(dto.length) : 20;
+      const width = dto.width !== undefined ? Number(dto.width) : 15;
+      const height = dto.height !== undefined ? Number(dto.height) : 10;
+      const volume = dto.volume !== undefined ? Number(dto.volume) : Number(((length * width * height) / 1000000).toFixed(4));
+      const volumetricWeight = dto.volumetricWeight !== undefined ? Number(dto.volumetricWeight) : Number(((length * width * height) / 6000).toFixed(3));
+      const weight = dto.weight !== undefined ? Number(dto.weight) : 1.0;
+      const tempRequirement = dto.tempRequirement || 'AMBIENT';
+      const turnoverClass = dto.turnoverClass || 'B';
+
       const product = this.productRepo.create({
         internalSku: sku,
         supplierBarcode: dto.supplierBarcode?.trim() || sku,
@@ -164,6 +211,14 @@ export class ProductsService {
         wholesalePrice: dto.wholesalePrice || 0,
         images: dto.images || [],
         isVisible: dto.isVisible ?? false,
+        weight,
+        length,
+        width,
+        height,
+        volume,
+        volumetricWeight,
+        tempRequirement,
+        turnoverClass,
       });
 
       if (dto.categoryId) {
@@ -212,6 +267,14 @@ export class ProductsService {
 
         return {
           ...product,
+          weight: Number(product.weight ?? 1.0),
+          length: Number(product.length ?? 20.0),
+          width: Number(product.width ?? 15.0),
+          height: Number(product.height ?? 10.0),
+          volume: Number(product.volume ?? 0.003),
+          volumetricWeight: Number(product.volumetricWeight ?? 0.5),
+          tempRequirement: product.tempRequirement || 'AMBIENT',
+          turnoverClass: product.turnoverClass || 'B',
           totalStock,
           retailPrice: Number(product.price || 0),
           wholesalePrice: Number(product.wholesalePrice || 0),
@@ -265,6 +328,14 @@ export class ProductsService {
         importPrice: Number(product.importPrice || 0),
         wholesalePrice: Number(product.wholesalePrice || 0),
         lastStockInQty,
+        weight: Number(product.weight ?? 1.0),
+        length: Number(product.length ?? 20.0),
+        width: Number(product.width ?? 15.0),
+        height: Number(product.height ?? 10.0),
+        volume: Number(product.volume ?? 0.003),
+        volumetricWeight: Number(product.volumetricWeight ?? 0.5),
+        tempRequirement: product.tempRequirement || 'AMBIENT',
+        turnoverClass: product.turnoverClass || 'B',
         category: product.category ? { id: product.category.id, name: product.category.name } : null,
         supplier: product.supplier ? { id: product.supplier.id, name: product.supplier.name } : null,
         stockBalances: productBalances.map((b) => ({
@@ -301,6 +372,25 @@ export class ProductsService {
       if (dto.wholesalePrice !== undefined) p.wholesalePrice = dto.wholesalePrice;
       if (dto.images !== undefined) p.images = dto.images;
       if (dto.isVisible !== undefined) p.isVisible = dto.isVisible;
+
+      if (dto.weight !== undefined) p.weight = Number(dto.weight);
+      if (dto.length !== undefined) p.length = Number(dto.length);
+      if (dto.width !== undefined) p.width = Number(dto.width);
+      if (dto.height !== undefined) p.height = Number(dto.height);
+
+      if (dto.length !== undefined || dto.width !== undefined || dto.height !== undefined) {
+        const l = Number(p.length || 20);
+        const w = Number(p.width || 15);
+        const h = Number(p.height || 10);
+        p.volume = dto.volume !== undefined ? Number(dto.volume) : Number(((l * w * h) / 1000000).toFixed(4));
+        p.volumetricWeight = dto.volumetricWeight !== undefined ? Number(dto.volumetricWeight) : Number(((l * w * h) / 6000).toFixed(3));
+      } else {
+        if (dto.volume !== undefined) p.volume = Number(dto.volume);
+        if (dto.volumetricWeight !== undefined) p.volumetricWeight = Number(dto.volumetricWeight);
+      }
+
+      if (dto.tempRequirement !== undefined) p.tempRequirement = dto.tempRequirement;
+      if (dto.turnoverClass !== undefined) p.turnoverClass = dto.turnoverClass;
 
       if (dto.categoryId) {
         let cat = await this.categoryRepo.findOneBy({ id: dto.categoryId });

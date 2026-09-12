@@ -26,6 +26,7 @@ import CashflowReportPage from './features/reports/pages/CashflowReportPage';
 import FundBalanceReportPage from './features/reports/pages/FundBalanceReportPage';
 import BusinessSummaryReportPage from './features/reports/pages/BusinessSummaryReportPage';
 import BelowMinStockReportPage from './features/reports/pages/BelowMinStockReportPage';
+import ShelfInventoryReportPage from './features/reports/pages/ShelfInventoryReportPage';
 import InventoryReportPage from './features/reports/pages/InventoryReportPage';
 import InventoryBaseUnitReportPage from './features/reports/pages/InventoryBaseUnitReportPage';
 import InventorySummaryReportPage from './features/reports/pages/InventorySummaryReportPage';
@@ -39,7 +40,7 @@ import ReceiptVouchersPage from './features/finance/pages/ReceiptVouchersPage';
 import PaymentVouchersPage from './features/finance/pages/PaymentVouchersPage';
 import ReceiptFromBillPage from './features/finance/pages/ReceiptFromBillPage';
 import AuditLog from './features/audit-log/AuditLog';
-import Settings, { MailSettings, AiSettings, StoreSettings } from './features/settings/Settings';
+import Settings from './features/settings/Settings';
 import ProfilePage from './features/user-management/pages/ProfilePage';
 import SupplierProfilePage from './features/supplier-portal/pages/SupplierProfilePage';
 import PurchaseOrdersPage from './features/inbound/pages/PurchaseOrdersPage';
@@ -82,6 +83,7 @@ import SyncConflictsPage from './features/offline-sync/pages/SyncConflictsPage';
 import ErpSyncStatusPage from './features/erp-status/pages/ErpSyncStatusPage';
 
 import DocumentsPage from './features/documents/DocumentsPage';
+import PrintTemplatesPage from './features/documents/pages/PrintTemplatesPage';
 import SalesInvoiceDocPage from './features/documents/pages/SalesInvoiceDocPage';
 import StockInDocPage from './features/documents/pages/StockInDocPage';
 import StockOutDocPage from './features/documents/pages/StockOutDocPage';
@@ -174,6 +176,7 @@ function RoleRoute({ children, allowedRoles, menuId }: { children: React.ReactNo
   if (isAdmin) {
     return <>{children}</>;
   }
+
   if (menuId) {
     if (canViewMenu(menuId)) {
       return <>{children}</>;
@@ -184,6 +187,7 @@ function RoleRoute({ children, allowedRoles, menuId }: { children: React.ReactNo
       </MainLayout>
     );
   }
+
   if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(user.role || '')) {
     return (
       <MainLayout>
@@ -624,6 +628,60 @@ function App() {
           }
         />
         <Route
+          path="/outbound/disposal"
+          element={
+            <RoleRoute menuId="outbound-disposal">
+              <MainLayout>
+                <Outbound featureMode="disposal" title="DANH SÁCH PHIẾU XUẤT HỦY HÀNG HÓA" codePrefix="XH" partnerLabel="Lý do xuất hủy" />
+              </MainLayout>
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/outbound/disposal/create"
+          element={
+            <ProtectedRoute>
+              <CreateOutboundOrderPage featureMode="disposal" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/outbound/retail"
+          element={
+            <RoleRoute menuId="outbound-retail">
+              <MainLayout>
+                <Outbound featureMode="retail" title="DANH SÁCH PHIẾU XUẤT BÁN LẺ" codePrefix="XBL" partnerLabel="Khách hàng bán lẻ" />
+              </MainLayout>
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/outbound/retail/create"
+          element={
+            <ProtectedRoute>
+              <CreateOutboundOrderPage featureMode="retail" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/outbound/sales-orders"
+          element={
+            <RoleRoute menuId="outbound-sales-orders">
+              <MainLayout>
+                <Outbound featureMode="sales-order" title="DANH SÁCH ĐƠN ĐẶT HÀNG (SALES ORDERS)" codePrefix="DDH" />
+              </MainLayout>
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/outbound/sales-orders/create"
+          element={
+            <ProtectedRoute>
+              <CreateOutboundOrderPage featureMode="sales-order" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/outbound/task-assign"
           element={
             <RoleRoute menuId="outbound-orders">
@@ -1033,15 +1091,16 @@ function App() {
           }
         />
         <Route
-          path="/reports/revenue-huu"
+          path="/reports/stale-inventory"
           element={
-            <RoleRoute menuId="report-revenue-huu">
+            <RoleRoute menuId="report-stale-inventory">
               <MainLayout>
-                <GenericReportPage title="Báo cáo doanh thu - Huu" description="Báo cáo doanh thu phân tích chuyên sâu" />
+                <ShelfInventoryReportPage title="BÁO CÁO HÀNG HÓA TỒN ĐỌNG" defaultStaleFilter={true} />
               </MainLayout>
             </RoleRoute>
           }
         />
+        <Route path="/reports/shelf-inventory" element={<Navigate to="/reports/stale-inventory" replace />} />
         <Route
           path="/reports-summary"
           element={
@@ -1067,7 +1126,7 @@ function App() {
           element={
             <RoleRoute menuId="print-templates">
               <MainLayout>
-                <SalesInvoiceDocPage />
+                <PrintTemplatesPage initialType="sales-invoice" />
               </MainLayout>
             </RoleRoute>
           }
@@ -1077,7 +1136,7 @@ function App() {
           element={
             <RoleRoute menuId="print-templates">
               <MainLayout>
-                <StockInDocPage />
+                <PrintTemplatesPage initialType="stock-in-note" />
               </MainLayout>
             </RoleRoute>
           }
@@ -1087,7 +1146,7 @@ function App() {
           element={
             <RoleRoute menuId="print-templates">
               <MainLayout>
-                <StockOutDocPage />
+                <PrintTemplatesPage initialType="stock-out-note" />
               </MainLayout>
             </RoleRoute>
           }
@@ -1097,7 +1156,7 @@ function App() {
           element={
             <RoleRoute menuId="print-templates">
               <MainLayout>
-                <TransferDocPage />
+                <PrintTemplatesPage initialType="transfer-note" />
               </MainLayout>
             </RoleRoute>
           }
@@ -1183,7 +1242,7 @@ function App() {
           }
         />
         <Route
-          path="/settings/*"
+          path="/settings"
           element={
             <RoleRoute menuId="settings">
               <MainLayout>
@@ -1191,12 +1250,7 @@ function App() {
               </MainLayout>
             </RoleRoute>
           }
-        >
-          <Route index element={<Navigate to="mail" replace />} />
-          <Route path="mail" element={<MailSettings />} />
-          <Route path="ai" element={<AiSettings />} />
-          <Route path="store" element={<StoreSettings />} />
-        </Route>
+        />
         <Route path="/stocktake" element={<Navigate to="/inventory/stocktake" replace />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>

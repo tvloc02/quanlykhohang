@@ -22,67 +22,43 @@ import {
   History,
 } from 'lucide-react';
 import { normalizeWarehouseRecord, type WarehouseRecord } from '../../shared/utils/warehouseAssignments';
+import { usePermissions } from '../../shared/hooks/usePermissions';
+import {
+  STORAGE_KEY,
+  type UserRole,
+  type PersonnelUser,
+  type ActionPermission,
+  type GeneralPermissions,
+  type PermissionGroup,
+  type MenuPermissionItem,
+  SYSTEM_MENU_TREE,
+  isActionSupported,
+  getDefaultGeneralPermissions,
+  getDefaultMenuPermissions,
+  getFallbackPermissionGroups,
+  readStoredPermissionGroups,
+  saveStoredPermissionGroups,
+  sanitizeGroupPermissions,
+} from '../../shared/utils/permissionStorage';
+
+export {
+  STORAGE_KEY,
+  type UserRole,
+  type PersonnelUser,
+  type ActionPermission,
+  type GeneralPermissions,
+  type PermissionGroup,
+  type MenuPermissionItem,
+  SYSTEM_MENU_TREE,
+  isActionSupported,
+  getDefaultGeneralPermissions,
+  getDefaultMenuPermissions,
+  getFallbackPermissionGroups,
+  readStoredPermissionGroups,
+  saveStoredPermissionGroups,
+};
 
 const API_BASE_URL = 'http://localhost:3000/api';
-const STORAGE_KEY = 'smart-wms-permission-groups';
-
-export type UserRole = { name: string };
-
-export type PersonnelUser = {
-  id: string;
-  email: string;
-  fullName?: string;
-  phone?: string;
-  roles?: UserRole[];
-  groupIds?: string[];
-};
-
-export type ActionPermission = {
-  view: boolean;
-  create: boolean;
-  edit: boolean;
-  delete: boolean;
-  print: boolean;
-  status: boolean;
-  import: boolean;
-  export: boolean;
-};
-
-export type GeneralPermissions = {
-  canViewImportPrice: boolean;        // Được xem giá nhập
-  canViewExportPriceInCat: boolean;   // Xem giá xuất trong DM
-  canCopyKit: boolean;               // Sao chép bộ
-  canViewInvoiceByStaff: boolean;    // Xem Hóa đơn theo Nhân viên
-  canManageCustomerByStaff: boolean;  // Quản lý Khách hàng theo Nhân viên
-  canEditPriceWholesale: boolean;    // Sửa giá khi Xuất bán buôn
-  canEditDateStock: boolean;          // Được sửa ngày phiếu Nhập/Xuất
-  canEditDateCash: boolean;           // Được sửa ngày phiếu Thu/Chi
-  // Quyền xem thông tin ở trang chủ:
-  showInvoiceCount: boolean;         // Số hóa đơn
-  showRevenue: boolean;              // Doanh thu
-  showActualRevenue: boolean;        // Thực thu
-  showProfitLoss: boolean;           // Lãi lỗ
-  showRevenueChart: boolean;         // Biểu đồ Doanh thu/Lợi nhuận
-  showAuditLog: boolean;             // Lịch sử thao tác
-  showEditAppPrice: boolean;         // Sửa giá đơn thị trường(App)
-};
-
-export type MenuPermissionItem = {
-  id: string;
-  label: string;
-  isHeader?: boolean;
-  parentId?: string;
-};
-
-export type PermissionGroup = {
-  id: string;
-  name: string;
-  code?: string;
-  description?: string;
-  memberIds: string[];
-  generalPermissions: GeneralPermissions;
-  menuPermissions: Record<string, ActionPermission>;
-};
 
 export type UndoLogItem = {
   id: string;
@@ -108,190 +84,11 @@ function authHeaders() {
   };
 }
 
-// System Menu Items Definition matching System Menu Hierarchy (14 Main Categories)
-export const SYSTEM_MENU_TREE: MenuPermissionItem[] = [
-  // 1. Trang chủ (Nút Vàng Nổi Bật)
-  { id: 'pos', label: 'Trang chủ' },
-
-  // 2. Nhập - Xuất
-  { id: 'nhap-xuat', label: 'Nhập - Xuất', isHeader: true },
-  { id: 'outbound-orders', label: 'Xuất bán', parentId: 'nhap-xuat' },
-  { id: 'outbound-retail', label: 'Xuất bán lẻ', parentId: 'nhap-xuat' },
-  { id: 'inbound-stock-in-orders', label: 'Nhập hàng', parentId: 'nhap-xuat' },
-  { id: 'inbound-return-requests', label: 'Xuất trả Nhà cung cấp', parentId: 'nhap-xuat' },
-  { id: 'inbound-return-customers', label: 'Nhập hàng Khách trả lại', parentId: 'nhap-xuat' },
-  { id: 'delivery-transfer-orders', label: 'Xuất chuyển Kho', parentId: 'nhap-xuat' },
-  { id: 'delivery-transfer-requests', label: 'Nhập chuyển Kho', parentId: 'nhap-xuat' },
-  { id: 'inventory-initial-stock', label: 'Nhập hàng tồn đầu kỳ', parentId: 'nhap-xuat' },
-  { id: 'inventory-stocktake', label: 'Kiểm kho', parentId: 'nhap-xuat' },
-  { id: 'outbound-sales-orders', label: 'Đơn đặt hàng', parentId: 'nhap-xuat' },
-  { id: 'inbound-purchase-orders', label: 'Đơn đặt hàng NCC', parentId: 'nhap-xuat' },
-  { id: 'documents-quotes', label: 'Báo giá', parentId: 'nhap-xuat' },
-  { id: 'outbound-disposal', label: 'Xuất hủy', parentId: 'nhap-xuat' },
-  { id: 'inbound-assembly', label: 'Tạo bộ/Combo', parentId: 'nhap-xuat' },
-
-  // 3. Thu chi
-  { id: 'thu-chi', label: 'Thu chi', isHeader: true },
-  { id: 'finance-receipts', label: 'Viết phiếu thu', parentId: 'thu-chi' },
-  { id: 'finance-receipt-from-bill', label: 'Thu tiền từ Phiếu xuất', parentId: 'thu-chi' },
-  { id: 'finance-payment-vouchers', label: 'Viết phiếu chi', parentId: 'thu-chi' },
-
-  // 4. Báo cáo Tổng hợp
-  { id: 'bao-cao-tong-hop', label: 'Báo cáo Tổng hợp', isHeader: true },
-  { id: 'report-sales', label: 'Báo cáo Bán hàng', parentId: 'bao-cao-tong-hop' },
-  { id: 'report-revenue', label: 'Báo cáo Doanh thu', parentId: 'bao-cao-tong-hop' },
-  { id: 'report-cashflow', label: 'Báo cáo Thu chi', parentId: 'bao-cao-tong-hop' },
-  { id: 'report-inventory', label: 'Hàng tồn', parentId: 'bao-cao-tong-hop' },
-  { id: 'report-inventory-base-unit', label: 'Hàng tồn Theo đơn vị gốc', parentId: 'bao-cao-tong-hop' },
-  { id: 'report-inventory-summary', label: 'Hàng tồn Tổng hợp', parentId: 'bao-cao-tong-hop' },
-  { id: 'report-customer-debt', label: 'Công nợ Khách hàng', parentId: 'bao-cao-tong-hop' },
-  { id: 'report-supplier-debt', label: 'Công nợ Nhà cung cấp', parentId: 'bao-cao-tong-hop' },
-  { id: 'report-fund-balance', label: 'Tồn quỹ', parentId: 'bao-cao-tong-hop' },
-  { id: 'report-cashbook', label: 'Sao kê - Sổ quỹ', parentId: 'bao-cao-tong-hop' },
-  { id: 'report-stock-card', label: 'Thẻ kho', parentId: 'bao-cao-tong-hop' },
-  { id: 'report-sales-detail', label: 'Chi tiết hàng bán ra', parentId: 'bao-cao-tong-hop' },
-  { id: 'report-sales-by-staff', label: 'Hàng bán ra theo Nhân viên', parentId: 'bao-cao-tong-hop' },
-  { id: 'report-business-summary', label: 'Tổng hợp Kinh doanh', parentId: 'bao-cao-tong-hop' },
-  { id: 'report-below-min-stock', label: 'Hàng tồn dưới định mức', parentId: 'bao-cao-tong-hop' },
-  { id: 'report-revenue-huu', label: 'Báo cáo doanh thu - Huu', parentId: 'bao-cao-tong-hop' },
-
-  // 5. Báo cáo Phân tích
-  { id: 'bao-cao-phan-tich', label: 'Báo cáo Phân tích', isHeader: true },
-  { id: 'report-bill-profit', label: 'Lợi nhuận theo Hóa đơn', parentId: 'bao-cao-phan-tich' },
-  { id: 'report-category-profit', label: 'Lợi nhuận theo Nhóm hàng', parentId: 'bao-cao-phan-tich' },
-  { id: 'report-customer-profit', label: 'Lợi nhuận theo Khách hàng', parentId: 'bao-cao-phan-tich' },
-  // 7. Danh mục
-  { id: 'danh-muc', label: 'Danh mục', isHeader: true },
-  { id: 'products-main', label: 'Hàng hóa', parentId: 'danh-muc' },
-  { id: 'categories', label: 'Nhóm hàng', parentId: 'danh-muc' },
-  { id: 'customers', label: 'Khách hàng', parentId: 'danh-muc' },
-  { id: 'suppliers', label: 'Nhà cung cấp', parentId: 'danh-muc' },
-  { id: 'warehouses', label: 'Kho hàng', parentId: 'danh-muc' },
-  { id: 'units', label: 'Đơn vị quy đổi', parentId: 'danh-muc' },
-  { id: 'currency', label: 'Ngoại tệ', parentId: 'danh-muc' },
-  { id: 'bank-accounts', label: 'Tài khoản Ngân hàng|Ví TM', parentId: 'danh-muc' },
-  { id: 'receipt-expense-types', label: 'Nội dung thu chi', parentId: 'danh-muc' },
-  { id: 'customer-groups', label: 'Nhóm KH/NCC', parentId: 'danh-muc' },
-  { id: 'price-lists', label: 'Bảng giá', parentId: 'danh-muc' },
-
-  // 9. Hệ thống
-  { id: 'he-thong', label: 'Hệ thống', isHeader: true },
-  { id: 'settings', label: 'Cấu hình hệ thống', parentId: 'he-thong' },
-  { id: 'personnel', label: 'Nhân viên & Phân quyền', parentId: 'he-thong' },
-  { id: 'areas', label: 'Cấu hình Chi nhánh', parentId: 'he-thong' },
-  { id: 'evat-config', label: 'Hóa đơn & VAT', parentId: 'he-thong' },
-  { id: 'print-templates', label: 'Mẫu in Chứng từ', parentId: 'he-thong' },
-  { id: 'audit-log', label: 'Nhật ký Hoạt động', parentId: 'he-thong' },
-  { id: 'permission-groups', label: 'Nhóm quyền', parentId: 'he-thong' },
-  { id: 'logout', label: 'Đăng xuất', parentId: 'he-thong' },
-  { id: 'change-password', label: 'Đổi mật khẩu', parentId: 'he-thong' },
-
-  // 10. Shipper
-  { id: 'shipper', label: 'Shipper', isHeader: true },
-  { id: 'shipper-delivery', label: 'Quản lý Giao hàng', parentId: 'shipper' },
-
-  // 11. VAT Điện tử
-  { id: 'vat-dien-tu', label: 'VAT Điện tử', isHeader: true },
-  { id: 'vat-management', label: 'Quản lý VAT Điện tử', parentId: 'vat-dien-tu' },
-  { id: 'vat-config', label: 'Thiết lập thông tin VAT', parentId: 'vat-dien-tu' },
-
-  // 12. Hướng dẫn sử dụng
-  { id: 'huong-dan-su-dung', label: 'Hướng dẫn sử dụng' },
-];
-
-export function isActionSupported(menuId: string, actionKey: keyof ActionPermission): boolean {
-  if (actionKey === 'view') return true;
-  if (actionKey === 'status') return false;
-
-  if (
-    menuId === 'pos' ||
-    menuId === 'trang-chu' ||
-    menuId === 'logout' ||
-    menuId === 'change-password' ||
-    menuId === 'huong-dan-su-dung' ||
-    menuId === 'print-barcode'
-  ) {
-    return false;
-  }
-
-  if (menuId.startsWith('report-') || menuId.startsWith('bao-cao-')) {
-    return actionKey === 'print' || actionKey === 'export';
-  }
-
-  if (menuId === 'zalo-config' || menuId === 'evat-config') {
-    return actionKey === 'edit';
-  }
-
-  return true;
-}
-
-export function getDefaultGeneralPermissions(): GeneralPermissions {
-  return {
-    canViewImportPrice: true,
-    canViewExportPriceInCat: true,
-    canCopyKit: true,
-    canViewInvoiceByStaff: false,
-    canManageCustomerByStaff: false,
-    canEditPriceWholesale: true,
-    canEditDateStock: true,
-    canEditDateCash: true,
-    showInvoiceCount: true,
-    showRevenue: true,
-    showActualRevenue: true,
-    showProfitLoss: true,
-    showRevenueChart: true,
-    showAuditLog: true,
-    showEditAppPrice: true,
-  };
-}
-
-export function getDefaultMenuPermissions(isFull = false): Record<string, ActionPermission> {
-  const map: Record<string, ActionPermission> = {};
-  SYSTEM_MENU_TREE.forEach((item) => {
-    map[item.id] = {
-      view: isFull,
-      create: isFull,
-      edit: isFull,
-      delete: isFull,
-      print: isFull,
-      status: isFull,
-      import: isFull,
-      export: isFull,
-    };
-  });
-  return map;
-}
-
-export function getFallbackPermissionGroups(): PermissionGroup[] {
-  return [];
-}
-
-export function readStoredPermissionGroups(): PermissionGroup[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
-    }
-    return [];
-  } catch {
-    return [];
-  }
-}
-
-export function saveStoredPermissionGroups(groups: PermissionGroup[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(groups));
-  window.dispatchEvent(new Event('storage'));
-  setTimeout(() => {
-    window.dispatchEvent(new Event('permissions-updated'));
-  }, 0);
-}
-
 // Toast notification rendered in Portal at top right to avoid layout distortion
 function Toast({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) {
   React.useEffect(() => {
     if (message) {
-      const timer = setTimeout(() => onClose(), 3500);
+      const timer = setTimeout(() => onClose(), 3000);
       return () => clearTimeout(timer);
     }
   }, [message, onClose]);
@@ -313,6 +110,11 @@ function Toast({ message, type, onClose }: { message: string; type: 'success' | 
 }
 
 export default function PermissionGroupsPage() {
+  const { canPerformAction } = usePermissions();
+  const canCreate = canPerformAction('permission-groups', 'create');
+  const canEdit = canPerformAction('permission-groups', 'edit');
+  const canDelete = canPerformAction('permission-groups', 'delete');
+
   const [groups, setGroups] = React.useState<PermissionGroup[]>(readStoredPermissionGroups);
   const [users, setUsers] = React.useState<PersonnelUser[]>([]);
   const [warehouses, setWarehouses] = React.useState<WarehouseRecord[]>([]);
@@ -841,14 +643,15 @@ export default function PermissionGroupsPage() {
 
   // Open Permission Matrix Modal (PHÂN QUYỀN DÙNG MENU)
   const openPermissionMatrixModal = (group: PermissionGroup) => {
-    setPermissionModalGroup(group);
+    const sanitizedGroup = sanitizeGroupPermissions(group);
+    setPermissionModalGroup(sanitizedGroup);
     setTempGeneralPermissions({
       ...getDefaultGeneralPermissions(),
-      ...(group.generalPermissions || {}),
+      ...(sanitizedGroup.generalPermissions || {}),
     });
     setTempMenuPermissions({
-      ...getDefaultMenuPermissions(true),
-      ...(group.menuPermissions || {}),
+      ...getDefaultMenuPermissions(false),
+      ...(sanitizedGroup.menuPermissions || {}),
     });
     setMatrixSearch('');
     setCollapsedHeaders({});
@@ -865,9 +668,15 @@ export default function PermissionGroupsPage() {
     setSaving(true);
     setError('');
 
-    const payload = {
+    const sanitizedGroup: PermissionGroup = sanitizeGroupPermissions({
+      ...permissionModalGroup,
       generalPermissions: tempGeneralPermissions,
       menuPermissions: tempMenuPermissions,
+    });
+
+    const payload = {
+      generalPermissions: sanitizedGroup.generalPermissions,
+      menuPermissions: sanitizedGroup.menuPermissions,
     };
 
     try {
@@ -879,20 +688,10 @@ export default function PermissionGroupsPage() {
 
       const targetNameLower = permissionModalGroup.name.trim().toLowerCase();
 
-      const updatedGroup: PermissionGroup = {
-        ...permissionModalGroup,
-        generalPermissions: tempGeneralPermissions,
-        menuPermissions: tempMenuPermissions,
-      };
-
       setGroups((prev) => {
         const next = prev.map((g) => {
           if (g.id === permissionModalGroup.id || (g.name && g.name.trim().toLowerCase() === targetNameLower)) {
-            return {
-              ...g,
-              generalPermissions: tempGeneralPermissions,
-              menuPermissions: tempMenuPermissions,
-            };
+            return sanitizedGroup;
           }
           return g;
         });
@@ -909,7 +708,7 @@ export default function PermissionGroupsPage() {
           groupName: permissionModalGroup.name,
           description: `Đã sửa quyền Menu cho nhóm "${permissionModalGroup.name}"`,
           previousGroup: JSON.parse(JSON.stringify(permissionModalGroup)),
-          updatedGroup: JSON.parse(JSON.stringify(updatedGroup)),
+          updatedGroup: JSON.parse(JSON.stringify(sanitizedGroup)),
         },
         ...prev,
       ]);
@@ -989,7 +788,7 @@ export default function PermissionGroupsPage() {
   // Toggle Header Row (Select All / Deselect All for Header Children)
   const toggleHeaderRowPermissions = (headerId: string, enable: boolean) => {
     const children = SYSTEM_MENU_TREE.filter((m) => m.parentId === headerId);
-    const actionKeys: Array<keyof ActionPermission> = ['view', 'create', 'edit', 'delete', 'print', 'import', 'export'];
+    const actionKeys: Array<keyof ActionPermission> = ['view', 'create', 'edit', 'delete', 'print', 'status', 'import', 'export'];
 
     setTempMenuPermissions((prev) => {
       const next = { ...prev };
@@ -1036,11 +835,12 @@ export default function PermissionGroupsPage() {
 
   // Active Menu Count Helper for table badge
   const getActiveMenuCount = (group: PermissionGroup) => {
-    if (!group.menuPermissions) return 0;
+    const menuPerms = group.menuPermissions;
+    if (!menuPerms) return 0;
     const items = SYSTEM_MENU_TREE.filter((m) => !m.isHeader);
     let count = 0;
     items.forEach((m) => {
-      if (group.menuPermissions[m.id]?.view) count++;
+      if (menuPerms[m.id]?.view) count++;
     });
     return count;
   };
@@ -1140,30 +940,34 @@ export default function PermissionGroupsPage() {
 
         <div className="flex flex-wrap items-center gap-3">
           {/* 1. Thêm mới */}
-          <button
-            type="button"
-            onClick={() => openGroupModal()}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-          >
-            <PlusCircle className="h-4.5 w-4.5 text-cyan-700" />
-            Thêm mới
-          </button>
+          {canCreate && (
+            <button
+              type="button"
+              onClick={() => openGroupModal()}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            >
+              <PlusCircle className="h-4.5 w-4.5 text-cyan-700" />
+              Thêm mới
+            </button>
+          )}
 
           {/* 2. Xóa */}
-          <button
-            type="button"
-            onClick={() => {
-              if (selectedGroupIds.length === 0) {
-                setError('Vui lòng tích chọn ít nhất 1 nhóm quyền trong bảng để xóa.');
-                return;
-              }
-              setIsBulkDeleteModalOpen(true);
-            }}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-          >
-            <Trash2 className="h-4.5 w-4.5 text-cyan-700" />
-            Xóa {selectedGroupIds.length > 0 ? `(${selectedGroupIds.length})` : ''}
-          </button>
+          {canDelete && (
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedGroupIds.length === 0) {
+                  setError('Vui lòng tích chọn ít nhất 1 nhóm quyền trong bảng để xóa.');
+                  return;
+                }
+                setIsBulkDeleteModalOpen(true);
+              }}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            >
+              <Trash2 className="h-4.5 w-4.5 text-cyan-700" />
+              Xóa {selectedGroupIds.length > 0 ? `(${selectedGroupIds.length})` : ''}
+            </button>
+          )}
 
           {/* 3. Export */}
           <button
@@ -1322,36 +1126,68 @@ export default function PermissionGroupsPage() {
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
-                            title="Phân quyền dùng Menu"
-                            onClick={() => openPermissionMatrixModal(group)}
+                            disabled={!canEdit}
+                            className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                              !canEdit
+                                ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
+                                : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer'
+                            }`}
+                            title={!canEdit ? 'Không có quyền phân quyền menu' : 'Phân quyền dùng Menu'}
+                            onClick={() => {
+                              if (!canEdit) return;
+                              openPermissionMatrixModal(group);
+                            }}
                           >
                             <Sliders size={18} strokeWidth={2.5} />
                           </button>
 
                           <button
                             type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
-                            title="Gán nhân sự vào nhóm"
-                            onClick={() => openAssignPersonnelModal(group)}
+                            disabled={!canEdit}
+                            className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                              !canEdit
+                                ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
+                                : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer'
+                            }`}
+                            title={!canEdit ? 'Không có quyền gán nhân sự' : 'Gán nhân sự vào nhóm'}
+                            onClick={() => {
+                              if (!canEdit) return;
+                              openAssignPersonnelModal(group);
+                            }}
                           >
                             <UserPlus size={18} strokeWidth={2.5} />
                           </button>
 
                           <button
                             type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
-                            title="Sửa nhóm"
-                            onClick={() => openGroupModal(group)}
+                            disabled={!canEdit}
+                            className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                              !canEdit
+                                ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
+                                : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer'
+                            }`}
+                            title={!canEdit ? 'Không có quyền sửa' : 'Sửa nhóm'}
+                            onClick={() => {
+                              if (!canEdit) return;
+                              openGroupModal(group);
+                            }}
                           >
                             <Pencil size={18} strokeWidth={2.5} />
                           </button>
 
                           <button
                             type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
-                            title="Xóa nhóm"
-                            onClick={() => setDeletingGroupId(group.id)}
+                            disabled={!canDelete}
+                            className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                              !canDelete
+                                ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
+                                : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer'
+                            }`}
+                            title={!canDelete ? 'Không có quyền xóa' : 'Xóa nhóm'}
+                            onClick={() => {
+                              if (!canDelete) return;
+                              setDeletingGroupId(group.id);
+                            }}
                           >
                             <Trash2 size={18} strokeWidth={2.5} />
                           </button>
@@ -1930,6 +1766,7 @@ export default function PermissionGroupsPage() {
                             { key: 'edit', label: 'SỬA' },
                             { key: 'delete', label: 'XÓA' },
                             { key: 'print', label: 'IN CHỨNG TỪ' },
+                            { key: 'status', label: 'DUYỆT / ĐỔI TT' },
                             { key: 'import', label: 'NHẬP FILE' },
                             { key: 'export', label: 'XUẤT FILE' },
                           ].map((col) => (
@@ -1982,7 +1819,7 @@ export default function PermissionGroupsPage() {
                                     </button>
                                   </div>
                                 </td>
-                                <td colSpan={7} className="bg-cyan-100/40"></td>
+                                <td colSpan={8} className="bg-cyan-100/40"></td>
                               </tr>
                             );
                           }
@@ -2008,6 +1845,7 @@ export default function PermissionGroupsPage() {
                             { key: 'edit', label: 'Sửa' },
                             { key: 'delete', label: 'Xóa' },
                             { key: 'print', label: 'In chứng từ' },
+                            { key: 'status', label: 'Duyệt / Đổi TT' },
                             { key: 'import', label: 'Nhập file' },
                             { key: 'export', label: 'Xuất file' },
                           ];

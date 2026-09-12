@@ -16,6 +16,7 @@ import {
   Check,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { getLocalDateString, getInitialReportDates, parseAnyDateToLocalString } from '../../../shared/utils/dateUtils';
 
 export interface CustomerProfitItem {
   id: string;
@@ -57,17 +58,11 @@ export default function CustomerProfitReportPage() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-  const [fromDate, setFromDate] = useState(() => {
-    const d = new Date();
-    d.setMonth(d.getMonth() - 3);
-    return d.toISOString().split('T')[0];
-  });
-  const [toDate, setToDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const { firstDay, today } = useMemo(() => getInitialReportDates(90), []);
+  const [fromDate, setFromDate] = useState(firstDay);
+  const [toDate, setToDate] = useState(today);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Pagination states
-  const [pageSize, setPageSize] = useState(20);
-  const [currentPage, setCurrentPage] = useState(1);
 
   // Toast
   const [toastMessage, setToastMessage] = useState('');
@@ -87,70 +82,97 @@ export default function CustomerProfitReportPage() {
 
       let customersList: CustomerProfitItem[] = [];
 
+      const customerStats = new Map<
+        string,
+        { branch: string; code: string; name: string; region: string; revenue: number; totalCost: number }
+      >();
+
+      const processedBills = new Set<string>();
+
+      const processOrder = (order: any) => {
+        const billCode = String(order.orderNo || order.code || '').trim().toUpperCase();
+        const oType = String(order.orderType || '').toLowerCase();
+        if (oType === 'disposal' || billCode.startsWith('XH')) return;
+        if (['ĐÃ HỦY', 'CANCELLED', 'HỦY'].includes(String(order.status || '').toUpperCase())) return;
+        if (billCode && processedBills.has(billCode)) return;
+
+        const orderDate = parseAnyDateToLocalString(order.orderDate || order.createdAt);
+        if (fromDate && orderDate && orderDate < fromDate) return;
+        if (toDate && orderDate && orderDate > toDate) return;
+
+        const custName = order.customerName || (typeof order.customer === 'string' ? order.customer : order.customer?.name) || 'Khách hàng bán lẻ';
+        const branch = order.warehouseName || order.branchName || order.warehouse?.name || order.branchCode || order.branch || 'Kho Tổng';
+        const custCode = order.customerCode || (custName ? 'KH_' + custName.slice(0, 4).toUpperCase() : 'KH_LE');
+
+        let lineRev = 0;
+        let lineCost = 0;
+        if (Array.isArray(order.details) && order.details.length > 0) {
+          order.details.forEach((d: any) => {
+            const qty = Number(d.requiredQty || d.quantity || d.qty || 1);
+            const price = Number(d.unitPrice || d.price || 500000);
+            const cost = Number(d.importPrice || d.costPrice || price * 0.7);
+            lineRev += qty * price;
+            lineCost += qty * cost;
+          });
+        } else {
+          lineRev = Number(order.totalAmount || order.subtotal || 1000000);
+          lineCost = lineRev * 0.7;
+        }
+
+        const existing = customerStats.get(custName);
+        if (existing) {
+          existing.revenue += lineRev;
+          existing.totalCost += lineCost;
+        } else {
+          customerStats.set(custName, {
+            branch,
+            code: custCode,
+            name: custName,
+            region: 'Mặc định',
+            revenue: lineRev,
+            totalCost: lineCost,
+          });
+        }
+
+        if (billCode) processedBills.add(billCode);
+      };
+
       if (outboundRes && outboundRes.ok) {
         const outbounds = await outboundRes.json();
         if (Array.isArray(outbounds)) {
-          const customerStats = new Map<
-            string,
-            { branch: string; code: string; name: string; region: string; revenue: number; totalCost: number }
-          >();
-
-          outbounds.forEach((order: any) => {
-            const custName = order.customer || 'Khách lẻ';
-            const branch = order.warehouseName || order.branch || 'Kho Tổng';
-            const custCode = order.customerCode || 'KH_' + custName.slice(0, 4).toUpperCase();
-
-            let lineRev = 0;
-            let lineCost = 0;
-            if (Array.isArray(order.details) && order.details.length > 0) {
-              order.details.forEach((d: any) => {
-                const qty = Number(d.requiredQty || d.quantity || 1);
-                const price = Number(d.unitPrice || d.price || 500000);
-                const cost = Number(d.importPrice || d.costPrice || price * 0.7);
-                lineRev += qty * price;
-                lineCost += qty * cost;
-              });
-            } else {
-              lineRev = (order.items || 1) * 1000000;
-              lineCost = lineRev * 0.7;
-            }
-
-            const existing = customerStats.get(custName);
-            if (existing) {
-              existing.revenue += lineRev;
-              existing.totalCost += lineCost;
-            } else {
-              customerStats.set(custName, {
-                branch,
-                code: custCode,
-                name: custName,
-                region: 'Mặc định',
-                revenue: lineRev,
-                totalCost: lineCost,
-              });
-            }
-          });
-
-          let sttCounter = 1;
-          customerStats.forEach((val) => {
-            const profit = val.revenue - val.totalCost;
-            const profitMargin = val.revenue > 0 ? (profit / val.revenue) * 100 : 0;
-
-            customersList.push({
-              id: `cust-profit-${sttCounter}`,
-              branch: val.branch,
-              stt: sttCounter++,
-              region: val.region,
-              customerCode: val.code,
-              customerName: val.name,
-              revenue: val.revenue,
-              totalCost: Math.round(val.totalCost),
-              profit: Math.round(profit),
-              profitMargin: Math.round(profitMargin * 100) / 100,
-            });
-          });
+          outbounds.forEach((order: any) => processOrder(order));
         }
       }
+
+      // Hợp nhất stored_outbound_orders từ localStorage
+      try {
+        const rawLocal = localStorage.getItem('stored_outbound_orders');
+        if (rawLocal) {
+          const localList: any[] = JSON.parse(rawLocal);
+          if (Array.isArray(localList)) {
+            localList.forEach((order: any) => processOrder(order));
+          }
+        }
+      } catch {}
+
+      let sttCounter = 1;
+      customerStats.forEach((val) => {
+        const profit = val.revenue - val.totalCost;
+        const profitMargin = val.revenue > 0 ? (profit / val.revenue) * 100 : 0;
+
+        customersList.push({
+          id: `cust-profit-${sttCounter}`,
+          branch: val.branch,
+          stt: sttCounter++,
+          region: val.region,
+          customerCode: val.code,
+          customerName: val.name,
+          revenue: val.revenue,
+          totalCost: Math.round(val.totalCost),
+          profit: Math.round(profit),
+          profitMargin: Math.round(profitMargin * 100) / 100,
+        });
+      });
 
       setReportData(customersList);
     } catch {
@@ -162,7 +184,18 @@ export default function CustomerProfitReportPage() {
 
   useEffect(() => {
     fetchCustomerProfitReport();
-  }, []);
+  }, [fromDate, toDate]);
+
+  useEffect(() => {
+    const handleOrderEvent = () => fetchCustomerProfitReport();
+    window.addEventListener('outbound-order-created', handleOrderEvent);
+    window.addEventListener('storage', handleOrderEvent);
+    return () => {
+      window.removeEventListener('outbound-order-created', handleOrderEvent);
+      window.removeEventListener('storage', handleOrderEvent);
+    };
+  }, [fromDate, toDate]);
+
 
   const branchOptions = useMemo(() => {
     const branches = Array.from(new Set(reportData.map((d) => d.branch)));
@@ -198,10 +231,6 @@ export default function CustomerProfitReportPage() {
   const totalProfitSum = filteredData.reduce((sum, i) => sum + i.profit, 0);
   const overallMargin = totalRevenue > 0 ? (totalProfitSum / totalRevenue) * 100 : 0;
 
-  const totalItems = filteredData.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-  const startIndex = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
-  const endIndex = Math.min(currentPage * pageSize, totalItems);
 
   const handleExportExcel = () => {
     const exportRows = filteredData.map((item, idx) => ({
@@ -520,60 +549,11 @@ export default function CustomerProfitReportPage() {
           </table>
         </div>
 
-        {/* PAGINATION FOOTER */}
-        {totalItems > 0 && (
-          <div className="flex flex-col items-center justify-between border-t-2 border-slate-200 bg-white px-6 py-3 sm:flex-row text-xs font-extrabold text-slate-700">
+        {/* SUMMARY FOOTER */}
+        {filteredData.length > 0 && (
+          <div className="flex items-center justify-between border-t-2 border-slate-200 bg-white px-6 py-3 text-xs font-extrabold text-slate-700 print:hidden">
             <div className="font-semibold text-slate-600">
-              Tổng số: <b>{totalItems}</b> <span className="ml-2">Hiển thị {startIndex} - {endIndex}</span>
-            </div>
-            <div className="mt-4 flex items-center gap-2 sm:mt-0">
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  setCurrentPage(1);
-                }}
-                className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-700 outline-none cursor-pointer"
-              >
-                <option value={10}>10 dòng / trang</option>
-                <option value={20}>20 dòng / trang</option>
-                <option value={50}>50 dòng / trang</option>
-                <option value={100}>100 dòng / trang</option>
-              </select>
-
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setCurrentPage(1)}
-                  disabled={currentPage === 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-                >
-                  «
-                </button>
-                <button
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-                >
-                  ‹
-                </button>
-                <span className="px-3 py-1 font-extrabold text-slate-800 bg-slate-100 rounded-lg">
-                  {currentPage} / {totalPages}
-                </span>
-                <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-                >
-                  ›
-                </button>
-                <button
-                  onClick={() => setCurrentPage(totalPages)}
-                  disabled={currentPage === totalPages}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-                >
-                  »
-                </button>
-              </div>
+              Tổng cộng: <b>{filteredData.length}</b> khách hàng
             </div>
           </div>
         )}

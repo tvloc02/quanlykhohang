@@ -9,11 +9,15 @@ import {
   FileText,
   Home,
   Layers,
+  Boxes,
+  Clock,
   Package,
   Search,
   Settings,
   TrendingDown,
   TrendingUp,
+  ArrowDownToLine,
+  ArrowUpFromLine,
   Truck,
   Users,
   Warehouse,
@@ -23,10 +27,9 @@ import {
   CornerDownLeft,
   Send,
   Repeat,
-  PlusCircle,
   ShoppingCart,
-  PackageCheck,
   FileX,
+  X,
   Link as LinkIcon,
   Cpu,
   Zap,
@@ -90,7 +93,7 @@ type MenuItem = {
 const menuItems: MenuItem[] = [
   // 1. Trang chủ
   {
-    id: 'pos',
+    id: 'dashboard',
     icon: Home,
     label: 'Trang chủ',
     path: '/dashboard',
@@ -104,19 +107,16 @@ const menuItems: MenuItem[] = [
     path: '/nhap-xuat',
     allowedRoles: ['admin', 'manager', 'staff'],
     children: [
-      { id: 'outbound-orders', icon: TrendingUp, label: 'Xuất bán', path: '/outbound/orders' },
+      { id: 'outbound-orders', icon: ArrowUpFromLine, label: 'Xuất bán', path: '/outbound/orders' },
       { id: 'outbound-retail', icon: Receipt, label: 'Xuất bán lẻ', path: '/outbound/retail' },
-      { id: 'inbound-stock-in-orders', icon: TrendingDown, label: 'Nhập hàng', path: '/inbound/stock-in-orders' },
+      { id: 'inbound-stock-in-orders', icon: ArrowDownToLine, label: 'Nhập hàng', path: '/inbound/stock-in-orders' },
       { id: 'inbound-return-requests', icon: CornerUpRight, label: 'Xuất trả Nhà cung cấp', path: '/inbound/return-requests' },
       { id: 'inbound-return-customers', icon: CornerDownLeft, label: 'Nhập hàng Khách trả lại', path: '/inbound/return-customers' },
       { id: 'delivery-transfer-orders', icon: Send, label: 'Xuất kho nội bộ', path: '/delivery/transfer-orders' },
       { id: 'delivery-transfer-requests', icon: Repeat, label: 'Nhập kho nội bộ', path: '/delivery/transfer-requests' },
-      { id: 'inventory-initial-stock', icon: PlusCircle, label: 'Nhập hàng tồn đầu kỳ', path: '/inventory/initial-stock' },
       { id: 'inventory-stocktake', icon: FileCheck, label: 'Kiểm kho', path: '/inventory/stocktake' },
       { id: 'outbound-sales-orders', icon: ShoppingCart, label: 'Đơn đặt hàng', path: '/outbound/sales-orders' },
-      { id: 'inbound-purchase-orders', icon: PackageCheck, label: 'Đơn đặt hàng NCC', path: '/inbound/purchase-orders' },
       { id: 'outbound-disposal', icon: FileX, label: 'Xuất hủy', path: '/outbound/disposal' },
-      { id: 'inbound-assembly', icon: LinkIcon, label: 'Tạo bộ/Combo', path: '/inbound/assembly' },
     ],
   },
   // 3. Thu chi
@@ -155,7 +155,7 @@ const menuItems: MenuItem[] = [
       { id: 'report-sales-by-staff', icon: Users, label: 'Hàng bán ra theo Nhân viên', path: '/reports/sales-by-staff' },
       { id: 'report-business-summary', icon: BarChart3, label: 'Tổng hợp Kinh doanh', path: '/reports/business-summary' },
       { id: 'report-below-min-stock', icon: TrendingDown, label: 'Hàng tồn dưới định mức', path: '/reports/below-min-stock' },
-      { id: 'report-revenue-huu', icon: BarChart3, label: 'Báo cáo doanh thu - Huu', path: '/reports/revenue-huu' },
+      { id: 'report-stale-inventory', icon: Clock, label: 'Báo cáo hàng hóa tồn đọng', path: '/reports/stale-inventory' },
     ],
   },
   // 5. Báo cáo Phân tích
@@ -197,8 +197,8 @@ const menuItems: MenuItem[] = [
     path: '/system-menu',
     children: [
       { id: 'settings', icon: Settings, label: 'Cấu hình hệ thống', path: '/settings' },
-      { id: 'personnel', icon: Users, label: 'Nhân viên & Phân quyền', path: '/personnel' },
-      { id: 'areas', icon: Warehouse, label: 'Cấu hình Chi nhánh', path: '/areas' },
+      { id: 'personnel', icon: Users, label: 'Nhân viên', path: '/personnel' },
+      { id: 'permission-groups', icon: ShieldCheck, label: 'Nhóm người dùng', path: '/personnel/permission-groups' },
       { id: 'evat-config', icon: FileEdit, label: 'Hóa đơn & VAT', path: '/vat/management' },
       { id: 'print-templates', icon: Printer, label: 'Mẫu in Chứng từ', path: '/documents' },
       { id: 'audit-log', icon: History, label: 'Nhật ký Hoạt động', path: '/audit-log' },
@@ -210,7 +210,17 @@ function isRouteActive(currentPath: string, targetPath: string) {
   if (targetPath === '/dashboard') {
     return currentPath === '/dashboard' || currentPath === '/';
   }
-  return currentPath.startsWith(targetPath);
+  if (currentPath === targetPath) {
+    return true;
+  }
+  // Prevent prefix collision between /personnel and /personnel/permission-groups
+  if (targetPath === '/personnel') {
+    return currentPath === '/personnel';
+  }
+  if (currentPath.startsWith(targetPath + '/')) {
+    return true;
+  }
+  return false;
 }
 
 export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
@@ -227,14 +237,13 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
     }
   }, []);
 
-  const { isAdmin, canViewMenu } = usePermissions();
+  const { canViewMenu } = usePermissions();
 
   const isMenuAllowed = useCallback(
     (item: { id: string; allowedRoles?: string[] }) => {
-      if (isAdmin) return true;
       return canViewMenu(item.id);
     },
-    [isAdmin, canViewMenu]
+    [canViewMenu]
   );
 
   const [expandedItems, setExpandedItems] = useState<Set<string>>(() => {
@@ -336,7 +345,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
             <div
               className={`transition-all duration-300 ease-in-out overflow-hidden ${
                 isExpanded
-                  ? 'max-h-[600px] opacity-100 my-1 pointer-events-auto'
+                  ? 'max-h-[2500px] opacity-100 my-1 pointer-events-auto'
                   : 'max-h-0 opacity-0 my-0 pointer-events-none'
               }`}
             >
@@ -402,11 +411,13 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   return (
     <aside
       className={`${
-        isOpen ? 'w-80' : 'w-20'
-      } fixed lg:relative z-40 bg-white dark:bg-[#090d16] transform transition-all duration-300 ease-in-out border-r-2 border-slate-200 dark:border-slate-800/80 flex flex-col h-screen`}
+        isOpen
+          ? 'w-80 translate-x-0'
+          : 'w-80 -translate-x-full lg:w-20 lg:translate-x-0'
+      } fixed lg:relative z-50 lg:z-auto bg-white dark:bg-[#090d16] transform transition-all duration-300 ease-in-out border-r-2 border-slate-200 dark:border-slate-800/80 flex flex-col h-screen shrink-0 shadow-2xl lg:shadow-none`}
     >
-      <div className="h-20 p-4 border-b-2 bg-white dark:bg-[#090d16] flex-shrink-0 border-slate-200 dark:border-slate-800/80 flex justify-center lg:justify-start box-border">
-        <div className={`flex items-center gap-3 w-full ${!isOpen ? 'justify-center' : ''}`}>
+      <div className="h-20 p-4 border-b-2 bg-white dark:bg-[#090d16] flex-shrink-0 border-slate-200 dark:border-slate-800/80 flex items-center justify-between box-border">
+        <div className={`flex items-center gap-3 ${!isOpen ? 'lg:justify-center w-full' : 'flex-1 overflow-hidden'}`}>
           <img src="/logo.png" alt="Smart WMS" className="h-11 w-11 object-cover rounded-xl shadow-sm flex-shrink-0" />
           {isOpen && (
             <div className="flex-1 overflow-hidden">
@@ -417,6 +428,16 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
             </div>
           )}
         </div>
+        {isOpen && (
+          <button
+            type="button"
+            onClick={onToggle}
+            className="lg:hidden p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 cursor-pointer ml-2"
+            title="Đóng menu"
+          >
+            <X size={20} />
+          </button>
+        )}
       </div>
 
       <div className="px-4 py-4 flex-shrink-0">

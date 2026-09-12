@@ -15,6 +15,7 @@ import {
 import * as XLSX from 'xlsx';
 import { ReportPrintHeader } from '../components/ReportPrintHeader';
 import { ReportPrintFooter } from '../components/ReportPrintFooter';
+import { getLocalDateString } from '../../../shared/utils/dateUtils';
 
 const API_BASE_URL = 'http://localhost:3000/api';
 
@@ -190,7 +191,7 @@ export default function InventorySummaryReportPage() {
   const [error, setError] = useState('');
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(() => getLocalDateString());
 
   // Fullscreen state
   const [isFullScreen, setIsFullScreen] = useState(false);

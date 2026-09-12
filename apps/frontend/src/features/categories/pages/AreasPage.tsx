@@ -339,15 +339,22 @@ export default function AreasPage() {
                           />
                         </td>
                         <td className="px-3 py-2 text-center border-r border-slate-200">
-                          {canEdit && (
-                            <button
-                              onClick={() => openEdit(item)}
-                              className="p-1 rounded bg-[#10b981] hover:bg-[#059669] text-white transition cursor-pointer inline-flex items-center justify-center shadow-xs"
-                              title="Sửa khu vực"
-                            >
-                              <Pencil size={13} />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            disabled={!canEdit}
+                            onClick={() => {
+                              if (!canEdit) return;
+                              openEdit(item);
+                            }}
+                            className={`p-1 rounded transition inline-flex items-center justify-center shadow-xs ${
+                              !canEdit
+                                ? 'bg-slate-200 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
+                                : 'bg-[#10b981] hover:bg-[#059669] text-white cursor-pointer'
+                            }`}
+                            title={!canEdit ? 'Không có quyền sửa' : 'Sửa khu vực'}
+                          >
+                            <Pencil size={13} />
+                          </button>
                         </td>
                         <td className="px-3 py-2 border-r border-slate-200 font-mono text-slate-700 font-semibold">{item.code || ''}</td>
                         <td className="px-3 py-2 border-r border-slate-200 font-bold text-slate-800">{item.name}</td>
