@@ -4,6 +4,9 @@ import {
   saveStoredPermissionGroups,
   getDefaultGeneralPermissions,
   getDefaultMenuPermissions,
+  resolveCanonicalMenuId,
+  CANONICAL_MENU_ALIASES,
+  SYSTEM_MENU_TREE,
   type PermissionGroup,
   type ActionPermission,
   type GeneralPermissions,
@@ -313,20 +316,43 @@ export function usePermissions() {
 
   const canViewMenu = useCallback(
     (menuId: string): boolean => {
+      // Tài khoản Quản trị viên (admin) luôn có quyền xem toàn bộ menu
+      if (isAdmin) return true;
+
+      const canonicalId = resolveCanonicalMenuId(menuId);
+
+      // Nếu menuId là danh mục cha (Header), hiển thị nếu người dùng có quyền ở ít nhất 1 menu con
+      const children = SYSTEM_MENU_TREE.filter((item) => item.parentId === menuId || item.parentId === canonicalId);
+      if (children.length > 0) {
+        return children.some((c) => canViewMenu(c.id));
+      }
+
       if (userActiveGroups.length > 0) {
         let hasExplicitDeny = false;
         let hasExplicitAllow = false;
 
+        // Tập hợp các ID tương đương (cả ID gốc, canonical ID và các alias ngược)
+        const checkIds = new Set<string>([menuId, canonicalId]);
+        Object.entries(CANONICAL_MENU_ALIASES).forEach(([alias, canon]) => {
+          if (canon === canonicalId || canon === menuId) {
+            checkIds.add(alias);
+          }
+        });
+
         for (const g of userActiveGroups) {
           const menuPerms = parseJson(g.menuPermissions) || {};
-          const p = menuPerms[menuId];
-          if (p) {
-            if (p.view === false || p.view === 'false' || p.view === 0) {
-              hasExplicitDeny = true;
-            } else if (p.view === true || p.view === 'true' || p.view === 1 || Boolean(p.view)) {
-              hasExplicitAllow = true;
+          for (const id of checkIds) {
+            const p = menuPerms[id];
+            if (p) {
+              if (p.view === false || p.view === 'false' || p.view === 0) {
+                hasExplicitDeny = true;
+              } else if (p.view === true || p.view === 'true' || p.view === 1 || Boolean(p.view)) {
+                hasExplicitAllow = true;
+                break;
+              }
             }
           }
+          if (hasExplicitAllow) break;
         }
 
         if (hasExplicitDeny && !hasExplicitAllow) return false;
@@ -335,16 +361,32 @@ export function usePermissions() {
 
       return true;
     },
-    [userActiveGroups]
+    [isAdmin, userActiveGroups]
   );
 
   const canPerformAction = useCallback(
     (menuId: string, action: keyof ActionPermission): boolean => {
+      // Tài khoản Quản trị viên (admin) luôn có toàn quyền thực hiện thao tác
+      if (isAdmin) return true;
+
+      const canonicalId = resolveCanonicalMenuId(menuId);
+      const checkIds = new Set<string>([menuId, canonicalId]);
+      Object.entries(CANONICAL_MENU_ALIASES).forEach(([alias, canon]) => {
+        if (canon === canonicalId || canon === menuId) {
+          checkIds.add(alias);
+        }
+      });
+
       if (userActiveGroups.length > 0) {
         return userActiveGroups.some((g: PermissionGroup) => {
           const menuPerms = parseJson(g.menuPermissions) || {};
-          const actionPerm = menuPerms[menuId]?.[action];
-          return actionPerm === true || actionPerm === 'true' || actionPerm === 1;
+          for (const id of checkIds) {
+            const actionPerm = menuPerms[id]?.[action];
+            if (actionPerm === true || actionPerm === 'true' || actionPerm === 1) {
+              return true;
+            }
+          }
+          return false;
         });
       }
 
@@ -355,6 +397,9 @@ export function usePermissions() {
 
   const canGeneralPermission = useCallback(
     (permKey: keyof GeneralPermissions): boolean => {
+      // Tài khoản Quản trị viên luôn có toàn quyền chung
+      if (isAdmin) return true;
+
       if (userActiveGroups.length > 0) {
         return userActiveGroups.some((g: PermissionGroup) => {
           const genPerms = parseJson(g.generalPermissions) || {};

@@ -36,6 +36,7 @@ import {
   Calendar,
   Hash,
   ArrowDownToLine,
+  Lock,
 } from 'lucide-react';
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
@@ -75,6 +76,14 @@ export interface ProductOption {
   salePrice?: number;
   price?: number;
   stock?: number;
+  weight?: number;
+  length?: number;
+  width?: number;
+  height?: number;
+  volume?: number;
+  volumetricWeight?: number;
+  tempRequirement?: string;
+  turnoverClass?: string;
 }
 
 export interface SupplierOption {
@@ -2220,7 +2229,6 @@ export default function CreateStockInOrderPage({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showAiSlottingModal, setShowAiSlottingModal] = useState(false);
   const [aiSlottingTargetRowId, setAiSlottingTargetRowId] = useState<string | null>(null);
-  const [pendingSaveConfig, setPendingSaveConfig] = useState<{ isPrint: boolean; saveStatus: 'DRAFT' | 'READY' | 'COMPLETED' } | null>(null);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [printOrderData, setPrintOrderData] = useState<InboundReceiptOrder | null>(null);
 
@@ -2295,7 +2303,7 @@ export default function CreateStockInOrderPage({
   // Toast auto-hide
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 3500);
+    const timer = setTimeout(() => setToast(null), 3000);
     return () => clearTimeout(timer);
   }, [toast]);
 
@@ -2374,6 +2382,14 @@ export default function CreateStockInOrderPage({
             salePrice: Number(p.retailPrice || p.salePrice || p.price || 0),
             price: Number(p.importPrice || p.purchasePrice || p.price || 0),
             stock: Number(p.stock || 0),
+            weight: Number(p.weight ?? 0),
+            length: Number(p.length ?? 0),
+            width: Number(p.width ?? 0),
+            height: Number(p.height ?? 0),
+            volume: Number(p.volume ?? 0),
+            volumetricWeight: Number(p.volumetricWeight ?? 0),
+            tempRequirement: p.tempRequirement || 'AMBIENT',
+            turnoverClass: p.turnoverClass || 'B',
           }));
           setProducts(filterOutDeletedProducts(normalized));
         }
@@ -2790,6 +2806,10 @@ export default function CreateStockInOrderPage({
       return;
     }
 
+    const pInfo = products.find(
+      (p) => String(p.id) === String(scanned.id) || (barcodeVal && p.internalSku?.toLowerCase() === barcodeVal.toLowerCase())
+    );
+
     // 2. Nếu chưa có, kiểm tra dòng trống có sẵn để điền vào
     const emptyRow = activeTab.details.find((r) => !r.productId && !r.productName);
     if (emptyRow) {
@@ -2801,6 +2821,12 @@ export default function CreateStockInOrderPage({
         price: priceVal,
         qty: 1,
         totalAmount: priceVal,
+        weight: Number(pInfo?.weight ?? (scanned as any)?.weight ?? 0),
+        length: Number(pInfo?.length ?? (scanned as any)?.length ?? 0),
+        width: Number(pInfo?.width ?? (scanned as any)?.width ?? 0),
+        height: Number(pInfo?.height ?? (scanned as any)?.height ?? 0),
+        volume: Number(pInfo?.volume ?? (scanned as any)?.volume ?? 0),
+        volumetricWeight: Number(pInfo?.volumetricWeight ?? (scanned as any)?.volumetricWeight ?? 0),
       });
     } else {
       // 3. Thêm dòng mới vào bảng
@@ -2812,6 +2838,12 @@ export default function CreateStockInOrderPage({
       newRow.price = priceVal;
       newRow.qty = 1;
       newRow.totalAmount = priceVal;
+      newRow.weight = Number(pInfo?.weight ?? (scanned as any)?.weight ?? 0);
+      newRow.length = Number(pInfo?.length ?? (scanned as any)?.length ?? 0);
+      newRow.width = Number(pInfo?.width ?? (scanned as any)?.width ?? 0);
+      newRow.height = Number(pInfo?.height ?? (scanned as any)?.height ?? 0);
+      newRow.volume = Number(pInfo?.volume ?? (scanned as any)?.volume ?? 0);
+      newRow.volumetricWeight = Number(pInfo?.volumetricWeight ?? (scanned as any)?.volumetricWeight ?? 0);
 
       updateActiveTab((tab) => ({ ...tab, details: [...tab.details, newRow] }));
     }
@@ -3094,6 +3126,18 @@ export default function CreateStockInOrderPage({
     return Math.max(0, grandTotal - paid);
   }, [grandTotal, activeTab]);
 
+  // Kiểm tra xem đã có bất kỳ hàng hóa nào trong phiếu được chọn ô kệ hay chưa
+  const hasAssignedBins = useMemo(() => {
+    if (!activeTab) return false;
+    return (activeTab.details || []).some((r) => {
+      const hasProduct = Boolean(r.productId || r.productName?.trim() || r.productSku?.trim());
+      if (!hasProduct) return false;
+      const hasArray = Array.isArray(r.assignedBins) && r.assignedBins.length > 0;
+      const hasStr = Boolean(r.locationBin && r.locationBin.trim() && r.locationBin.trim() !== '-');
+      return hasArray || hasStr;
+    });
+  }, [activeTab]);
+
   const handleOpenPrintModal = useCallback((overrideItems?: FormDetailRow[]) => {
     if (!activeTab) return;
     const itemsToPrint = overrideItems || activeTab.details.filter(
@@ -3174,68 +3218,16 @@ export default function CreateStockInOrderPage({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showPrintModal, handleOpenPrintModal]);
 
-  const handleConfirmAiSlotting = (updatedRows: FormDetailRow[]) => {
-    setShowAiSlottingModal(false);
-
-    updateActiveTab((tab) => {
-      const updatedMap = new Map(updatedRows.map((r) => [r.rowId, r]));
-      const mergedDetails = tab.details.map((row) => {
-        if (updatedMap.has(row.rowId)) {
-          return updatedMap.get(row.rowId)!;
-        }
-        return row;
-      });
-
-      const hasEmptyRow = mergedDetails.some((r) => !r.productId && !r.productName?.trim());
-      if (!hasEmptyRow) {
-        mergedDetails.push(makeEmptyRow(mergedDetails.length + 1, tab.warehouseCode || 'KH006'));
-      }
-
-      return {
-        ...tab,
-        details: mergedDetails,
-      };
-    });
-
-    if (pendingSaveConfig) {
-      // Flow 1: Triggered from "Lưu/Hoàn thành phiếu nhập" button at bottom of page
-      const cfg = pendingSaveConfig;
-      setPendingSaveConfig(null);
-      setTimeout(() => {
-        handleSaveInboundOrder(cfg.isPrint, cfg.saveStatus, true);
-      }, 100);
-    } else {
-      // Flow 2: Triggered from individual item action button in table
-      setToast({ message: 'Đã Lưu cho sản phẩm trong danh sách!', type: 'success' });
-      setAiSlottingTargetRowId(null);
-    }
-  };
-
-  const handleSkipAiSlotting = () => {
-    setShowAiSlottingModal(false);
-    if (pendingSaveConfig) {
-      const cfg = pendingSaveConfig;
-      setPendingSaveConfig(null);
-      handleSaveInboundOrder(cfg.isPrint, cfg.saveStatus, true);
-    } else {
-      setAiSlottingTargetRowId(null);
-    }
-  };
-
   const handleSaveInboundOrder = async (
     isPrint = false,
     saveStatus: 'DRAFT' | 'READY' | 'COMPLETED' = 'COMPLETED',
-    bypassAi = false,
+    bypassAi = true,
     overrideRows?: FormDetailRow[],
     overrideSubWarehouses?: any[]
   ) => {
     if (!activeTab) return;
 
     const currentRows = overrideRows || activeTab.details;
-    const currentValidItems = currentRows.filter(
-      (r) => (r.productId || r.productName?.trim() || r.productSku?.trim()) && Number(r.qty) > 0
-    );
-
     const isCompleted = isCompletedInboundStatus(activeTab.status);
     if (isCompleted) {
       setToast({
@@ -3245,16 +3237,30 @@ export default function CreateStockInOrderPage({
       return;
     }
 
-    if (currentValidItems.length === 0) {
-      setToast({ message: 'Vui lòng chọn ít nhất 1 sản phẩm với số lượng > 0', type: 'error' });
+    const itemsWithProduct = currentRows.filter(
+      (r) => r.productId || r.productName?.trim() || r.productSku?.trim()
+    );
+
+    if (itemsWithProduct.length === 0) {
+      setToast({
+        message: 'Phiếu nhập kho phải có ít nhất 1 hàng hóa! Vui lòng chọn hàng hóa trước khi tạo phiếu.',
+        type: 'error',
+      });
       return;
     }
 
-    if (!bypassAi) {
-      setPendingSaveConfig({ isPrint, saveStatus });
-      setShowAiSlottingModal(true);
+    const invalidQtyItem = itemsWithProduct.find(
+      (r) => !r.qty || Number(r.qty) < 1 || isNaN(Number(r.qty))
+    );
+    if (invalidQtyItem) {
+      setToast({
+        message: `Mặt hàng "${invalidQtyItem.productName || invalidQtyItem.productSku || 'trong phiếu'}" có số lượng không hợp lệ. Số lượng phải lớn hơn hoặc bằng 1!`,
+        type: 'error',
+      });
       return;
     }
+
+    const currentValidItems = itemsWithProduct;
 
     const safeNum = (v: any, max = 999999999999.99) => {
       const n = Number(v);
@@ -4042,30 +4048,48 @@ export default function CreateStockInOrderPage({
 
           {/* Chọn Kho nhập hàng (Custom Rounded Dropdown) */}
           <div className="relative warehouse-dropdown-box">
-            <label className="mb-1.5 block text-xs font-black uppercase text-slate-700 flex items-center gap-1">
-              <WarehouseIcon className="h-4 w-4 text-cyan-600" />
-              <span>Kho nhập hàng</span>
-            </label>
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="block text-xs font-black uppercase text-slate-700 flex items-center gap-1">
+                <WarehouseIcon className="h-4 w-4 text-cyan-600" />
+                <span>Kho nhập hàng</span>
+              </label>
+            </div>
             <div
               onClick={() => {
                 if (isReadOnly) return;
+                if (hasAssignedBins) {
+                  setToast({
+                    message: 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho lưu trữ!',
+                    type: 'error',
+                  });
+                  return;
+                }
                 setShowWarehouseDropdown((prev) => !prev);
               }}
-              className={`h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 flex items-center justify-between shadow-2xs transition ${isReadOnly ? 'bg-slate-100 border-slate-300 text-slate-600 cursor-not-allowed' : 'cursor-pointer hover:border-cyan-600'
-                }`}
+              className={`h-10 w-full rounded-xl border-2 px-3 text-sm font-bold flex items-center justify-between shadow-2xs transition ${
+                isReadOnly || hasAssignedBins
+                  ? 'bg-slate-100 border-slate-300 text-slate-600 cursor-not-allowed'
+                  : 'bg-white border-slate-300 text-slate-800 cursor-pointer hover:border-cyan-600'
+              }`}
+              title={hasAssignedBins ? 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho.' : undefined}
             >
-              <span className="truncate">
+              <span className="truncate flex items-center gap-1.5">
+                {hasAssignedBins && <Lock size={14} className="text-amber-600 shrink-0" />}
                 {warehouses.find((w) => w.code === activeTab?.warehouseCode)
                   ? `[${activeTab.warehouseCode}] ${warehouses.find((w) => w.code === activeTab.warehouseCode)?.name}`
                   : activeTab?.warehouseCode || (warehouses[0] ? `[${warehouses[0].code}] ${warehouses[0].name}` : 'Đang tải kho...')}
               </span>
-              <ChevronDown
-                size={16}
-                className={`text-slate-500 transition-transform duration-200 ${showWarehouseDropdown ? 'rotate-180' : ''}`}
-              />
+              {hasAssignedBins ? (
+                <Lock size={16} className="text-amber-600 shrink-0" />
+              ) : (
+                <ChevronDown
+                  size={16}
+                  className={`text-slate-500 transition-transform duration-200 ${showWarehouseDropdown ? 'rotate-180' : ''}`}
+                />
+              )}
             </div>
 
-            {!isReadOnly && showWarehouseDropdown && (
+            {!isReadOnly && !hasAssignedBins && showWarehouseDropdown && (
               <div className="absolute left-0 top-full z-[100] mt-1.5 w-full rounded-xl border border-slate-200 bg-white p-1.5 shadow-2xl animate-[fadeIn_0.15s_ease-out]">
                 <div className="max-h-60 overflow-y-auto custom-scrollbar space-y-1">
                   {warehouses.length === 0 ? (
@@ -4115,15 +4139,15 @@ export default function CreateStockInOrderPage({
           {/* ═══ PRODUCT SELECTION TABLE CARD ═══ */}
           <div className={`flex flex-col rounded-xl border-2 border-slate-200 bg-white shadow-sm overflow-hidden min-h-0 ${isFullscreen ? 'flex-1 h-full' : ''}`}>
             {/* Table Header Controls */}
-            <div className="px-3 py-2.5 border-b-2 border-slate-200 bg-slate-50 flex items-center justify-between flex-shrink-0">
+            <div className="px-3 py-2.5 border-b-2 border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2 flex-shrink-0">
               <div className="flex items-center gap-2 text-cyan-900 font-black text-xs sm:text-sm">
-                <Package className="h-4 w-4 text-cyan-600" />
+                <Package className="h-4 w-4 text-cyan-600 shrink-0" />
                 <span>
                   THÔNG TIN HÀNG HÓA NHẬP KHO ({activeValidItems.length} MẶT HÀNG - TỔNG SL: {totalQty})
                 </span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                 {!isReadOnly && (
                   <>
                     <button
@@ -4255,6 +4279,12 @@ export default function CreateStockInOrderPage({
                                           unit: p.unit || 'Cái',
                                           price: p.purchasePrice || p.salePrice || p.price || 0,
                                           qty: row.qty === 0 ? 1 : row.qty,
+                                          weight: Number(p.weight ?? 0),
+                                          length: Number(p.length ?? 0),
+                                          width: Number(p.width ?? 0),
+                                          height: Number(p.height ?? 0),
+                                          volume: Number(p.volume ?? 0),
+                                          volumetricWeight: Number(p.volumetricWeight ?? 0),
                                         });
                                         setActiveProductDropdownRowId(null);
                                       }}
@@ -4288,11 +4318,11 @@ export default function CreateStockInOrderPage({
                         <td className="p-1 border-r border-slate-200">
                           <input
                             type="number"
-                            min="0"
+                            min="1"
                             disabled={isReadOnly}
                             value={row.qty === 0 ? '' : row.qty}
                             onChange={(e) => updateRow(row.rowId, { qty: Number(e.target.value) })}
-                            placeholder="0"
+                            placeholder="1"
                             className="w-full h-9 px-2 text-center rounded-lg border border-slate-300 bg-white font-black text-slate-900 outline-none focus:border-cyan-600 text-xs sm:text-sm disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed"
                           />
                         </td>
@@ -4817,12 +4847,8 @@ export default function CreateStockInOrderPage({
             stagedSubWarehouses: updatedSubWarehouses || t.stagedSubWarehouses,
           }));
           setShowAiSlottingModal(false);
-          setToast({ message: 'Đã cập nhật vị trí ô kệ cất hàng!', type: 'success' });
-          if (pendingSaveConfig) {
-            const cfg = pendingSaveConfig;
-            setPendingSaveConfig(null);
-            handleSaveInboundOrder(cfg.isPrint, cfg.saveStatus, true, updatedRows, updatedSubWarehouses);
-          }
+          setAiSlottingTargetRowId(null);
+          setToast({ message: 'Đã cập nhật vị trí ô kệ cất hàng vào phiếu!', type: 'success' });
         }}
       />
 

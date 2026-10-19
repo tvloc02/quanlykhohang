@@ -39,6 +39,7 @@ import { SettingsModule } from './settings/settings.module';
       autoLoadEntities: true,
       synchronize: true,
       logging: false,
+      timezone: 'Z',
     }),
     AuthModule,
     UsersModule,

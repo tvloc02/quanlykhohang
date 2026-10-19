@@ -73,18 +73,20 @@ export class StocktakeController {
   findAll(@Req() req: Request) {
     const role = getRoleFromRequest(req);
     if (role === 'inventory_checker' || role === 'staff') {
-      return this.service.findMyTasks(getUserIdentifier(req));
+      const user = getUserFromRequest(req);
+      return this.service.findMyTasks(getUserIdentifier(req), user.email, user.fullName);
     }
     return this.service.findAll();
   }
 
   @Get('my-tasks')
   findMyTasks(@Req() req: Request) {
+    const user = getUserFromRequest(req);
     const userIdentifier = getUserIdentifier(req);
-    if (!userIdentifier) {
+    if (!userIdentifier && !user.email) {
       return [];
     }
-    return this.service.findMyTasks(userIdentifier);
+    return this.service.findMyTasks(userIdentifier, user.email, user.fullName);
   }
 
   @Get('requests')
@@ -146,13 +148,27 @@ export class StocktakeController {
   }
 
   @Post(':id/approve')
-  approve(@Param('id') id: string, @Body() body: { approvedBy?: string }, @Req() req: Request) {
+  approve(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      approvedBy?: string;
+      items?: Array<{
+        detailId?: string;
+        productId?: string;
+        countedQty: number;
+        note?: string;
+        shelfAllocations?: Array<{ binCode: string; qty: number }>;
+      }>;
+    },
+    @Req() req: Request,
+  ) {
     const role = getRoleFromRequest(req);
     // Chỉ manager/admin mới được duyệt
     if (role && role !== 'manager' && role !== 'admin') {
       throw new ForbiddenException('Chỉ quản lý mới có quyền duyệt kiểm kê');
     }
-    return this.service.approve(id, body?.approvedBy);
+    return this.service.approve(id, body?.approvedBy, body?.items);
   }
 
   @Post(':id/reject')

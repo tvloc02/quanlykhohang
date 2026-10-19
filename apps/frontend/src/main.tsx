@@ -6,7 +6,6 @@ import './styles/tailwind.css';
 // Xóa dữ liệu cũ trong localStorage để đảm bảo UI luôn lấy từ database
 const STALE_CACHE_KEYS = [
   'smart-wms-catalog-categories',
-  'smart-wms-warehouses',
   'smart-wms-customer-profiles',
   'smart-wms-units',
   'smart-wms-personnel-users',

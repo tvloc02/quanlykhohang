@@ -43,4 +43,29 @@ export class Product extends BaseEntity {
 
   @Column({ type: 'boolean', default: false })
   isVisible: boolean;
+
+  // Logistics & AI Slotting Parameters
+  @Column({ type: 'decimal', precision: 10, scale: 3, default: 1.0 })
+  weight: number; // kg
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 20.0 })
+  length: number; // cm
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 15.0 })
+  width: number; // cm
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 10.0 })
+  height: number; // cm
+
+  @Column({ type: 'decimal', precision: 12, scale: 4, default: 0.003 })
+  volume: number; // m³ (CBM)
+
+  @Column({ type: 'decimal', precision: 10, scale: 3, default: 0.5 })
+  volumetricWeight: number; // kg
+
+  @Column({ length: 32, default: 'AMBIENT' })
+  tempRequirement: string; // 'AMBIENT' | 'COLD' | 'THERMAL'
+
+  @Column({ length: 8, default: 'B' })
+  turnoverClass: string; // 'A' | 'B' | 'C'
 }

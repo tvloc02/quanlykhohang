@@ -47,6 +47,7 @@ import BarcodeScanner, { type ScannedProduct } from '../../shared/components/Bar
 import CreateOutboundOrderPage from './pages/CreateOutboundOrderPage';
 import OutboundPrintModal from './components/OutboundPrintModal';
 import { usePermissions } from '../../shared/hooks/usePermissions';
+import { parseAnyDate, toDatetimeLocalValue, formatFullDateTimeDisplay, getLocalDateString } from '../../shared/utils/dateUtils';
 
 const getOutboundMenuId = (mode?: string) => {
   if (mode === 'sales-order') return 'outbound-sales-orders';
@@ -62,7 +63,7 @@ const getOutboundMenuId = (mode?: string) => {
 function Toast({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) {
   useEffect(() => {
     if (message) {
-      const timer = setTimeout(() => onClose(), 3500);
+      const timer = setTimeout(() => onClose(), 3000);
       return () => clearTimeout(timer);
     }
   }, [message, onClose]);
@@ -73,12 +74,12 @@ function Toast({ message, type, onClose }: { message: string; type: 'success' | 
     <div
       className={`fixed top-4 right-4 z-[999] flex items-center gap-3 rounded-xl px-5 py-3 shadow-lg transition-all animate-[slideIn_0.3s_ease-out] ${type === 'error'
           ? 'bg-red-50 text-red-600 border border-red-200'
-          : 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+          : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
         }`}
     >
-      {type === 'error' ? <XCircle size={20} /> : <CheckCircle size={20} />}
+      {type === 'error' ? <XCircle size={20} className="shrink-0 text-red-600" /> : <CheckCircle size={20} className="shrink-0 text-emerald-600" />}
       <p className="text-sm font-semibold">{message}</p>
-      <button onClick={onClose} className="ml-2 rounded-lg p-1 hover:bg-white/50 transition cursor-pointer">
+      <button onClick={onClose} className="ml-2 rounded-lg p-1 hover:bg-black/5 transition cursor-pointer">
         <X size={16} />
       </button>
     </div>
@@ -242,62 +243,15 @@ function authHeaders() {
   };
 }
 
-function getLocalDateString(d: Date = new Date()): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
 function toDateOnlyString(dateStr?: string | Date | null): string {
   if (!dateStr) return '';
-  const str = String(dateStr).trim();
-  const ymdMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
-  if (ymdMatch) {
-    const year = ymdMatch[1];
-    const month = ymdMatch[2].padStart(2, '0');
-    const day = ymdMatch[3].padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
-  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-  if (dmyMatch) {
-    const day = dmyMatch[1].padStart(2, '0');
-    const month = dmyMatch[2].padStart(2, '0');
-    const year = dmyMatch[3];
-    return `${year}-${month}-${day}`;
-  }
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return '';
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  const d = parseAnyDate(dateStr);
+  if (!d || Number.isNaN(d.getTime())) return '';
+  return getLocalDateString(d);
 }
 
 function formatDateDisplay(dateVal?: string | Date | null): string {
-  if (!dateVal) return '-';
-  const str = String(dateVal).trim();
-  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s*,?\s*(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
-  if (dmyMatch) {
-    const day = dmyMatch[1].padStart(2, '0');
-    const month = dmyMatch[2].padStart(2, '0');
-    const year = dmyMatch[3];
-    const hh = (dmyMatch[4] || '08').padStart(2, '0');
-    const mm = (dmyMatch[5] || '30').padStart(2, '0');
-    const ss = (dmyMatch[6] || '00').padStart(2, '0');
-    return `${day}/${month}/${year} ${hh}:${mm}:${ss}`;
-  }
-  const d = new Date(dateVal);
-  if (!Number.isNaN(d.getTime())) {
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const year = d.getFullYear();
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mm = String(d.getMinutes()).padStart(2, '0');
-    const ss = String(d.getSeconds()).padStart(2, '0');
-    return `${day}/${month}/${year} ${hh}:${mm}:${ss}`;
-  }
-  return String(dateVal);
+  return formatFullDateTimeDisplay(dateVal);
 }
 
 // ─── MASTER DATA MẪU CHUẨN XUẤT KHO ───────────────────────────
@@ -373,8 +327,7 @@ function makeInitialRows(count = DEFAULT_ROWS_COUNT): FormDetailRow[] {
 }
 
 function createNewOutboundTab(tabIndex = 1, currentUserName = 'Quản lý kho', isDisposal = false): OutboundTab {
-  const d = new Date();
-  const dateFormatted = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+  const dateFormatted = toDatetimeLocalValue(new Date());
 
   return {
     tabId: `tab-${Date.now()}-${tabIndex}`,
@@ -658,9 +611,9 @@ export default function Outbound({
           vatAmount: Number(item.vatAmount || 0),
           totalAmount: Number(item.totalAmount || 0),
           amountPaid: Number(item.amountPaid || item.totalAmount || 0),
-          itemsCount: item.details?.length || item.items || 1,
-          totalQty: item.details?.reduce((s: number, d: any) => s + (Number(d.requiredQty || d.qty || 1)), 0) || 1,
-          details: item.details?.map((d: any) => ({
+          itemsCount: (item.details || item.items)?.length || 1,
+          totalQty: (item.details || item.items)?.reduce((s: number, d: any) => s + (Number(d.requiredQty || d.qty || 1)), 0) || 1,
+          details: (item.details || item.items)?.map((d: any) => ({
             id: d.id,
             productId: d.product?.id || d.productId,
             productSku: d.product?.internalSku || d.productSku || d.sku || 'SKU',
@@ -669,6 +622,11 @@ export default function Outbound({
             qty: Number(d.requiredQty || d.qty || 1),
             price: Number(d.unitPrice || d.price || 0),
             totalLineAmount: Number(d.totalLineAmount || (Number(d.requiredQty || d.qty || 1) * Number(d.unitPrice || d.price || 0))),
+            locationBin: d.locationBin || (d.assignedBins && d.assignedBins.join(', ')) || '',
+            assignedBins: Array.isArray(d.assignedBins) ? d.assignedBins : (d.locationBin ? [d.locationBin] : []),
+            lossAmount: d.lossAmount !== undefined ? Number(d.lossAmount) : undefined,
+            totalDisposalAmount: d.totalDisposalAmount !== undefined ? Number(d.totalDisposalAmount) : undefined,
+            note: d.note,
           })) || [],
         }));
         setOrders(formatted);
@@ -1336,7 +1294,7 @@ export default function Outbound({
         formatWarehouseDisplay(o.branchCode || o.warehouseCode, warehouses),
         o.employeeName || currentUserName,
         o.orderNo,
-        o.orderDate,
+        formatDateDisplay(o.orderDate),
         o.customer,
         o.totalQty || 1,
         o.totalAmount,
